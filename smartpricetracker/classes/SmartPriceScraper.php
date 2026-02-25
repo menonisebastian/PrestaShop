@@ -6,7 +6,7 @@
 class SmartPriceScraper
 {
     // ========================================================================
-    // MODO PROFESIONAL (Opcional): API Key de ScraperAPI.com (Gratis 1000/mes)
+    // MODO PROFESIONAL: API Key de ScraperAPI.com (Gratis 1000/mes)
     // ========================================================================
     const SCRAPER_API_KEY = 'd71349b190a08bfadcd73abc846ce400'; 
 
@@ -22,42 +22,103 @@ class SmartPriceScraper
         $price = false;
 
         // ========================================================================
-        // FASE 1: INTENTOS LOCALES (AHORRA CRÉDITOS Y ES MUY RÁPIDO)
+        // FASE 1: INTENTOS LOCALES (0 CRÉDITOS - MÁXIMA VELOCIDAD)
         // ========================================================================
-        
-        // 1.1 Navegador Chrome Normal
-        $html = self::fetchUrl($url, $host, 0, false, false);
+        $html = self::fetchUrl($url, $host, 0, false, false, false);
         $price = self::parsePriceFromHtml($html, $host);
 
-        // 1.2 Si falló y parece bloqueado, disfraz de Facebook Bot
         if ($price === false && self::isBlocked($html)) {
-            $html = self::fetchUrl($url, $host, 1, false, false);
+            $html = self::fetchUrl($url, $host, 1, false, false, false); // Facebook Bot
             $price = self::parsePriceFromHtml($html, $host);
             
-            // 1.3 Si falló, disfraz de Googlebot
             if ($price === false && self::isBlocked($html)) {
-                $html = self::fetchUrl($url, $host, 2, false, false);
+                $html = self::fetchUrl($url, $host, 2, false, false, false); // Googlebot
                 $price = self::parsePriceFromHtml($html, $host);
             }
         }
 
         // ========================================================================
-        // FASE 2: API DE RESCATE (CUANDO EL SERVIDOR ESTÁ TOTALMENTE BANEADO)
+        // FASE 2: EL TRUCO DE GOOGLE SEARCH LOCAL (0 CRÉDITOS)
+        // Buscamos la URL en Google para leer el precio del "Rich Snippet" indexado.
+        // ========================================================================
+        if ($price === false) {
+            // Buscamos la URL exacta entre comillas en Google España
+            $googleUrl = 'https://www.google.es/search?q=' . urlencode('"' . $url . '"') . '&hl=es&gl=es';
+            $googleHtml = self::fetchUrl($googleUrl, 'www.google.es', 0, false, false, false);
+            
+            if (!empty($googleHtml) && !self::isGoogleBlocked($googleHtml)) {
+                $price = self::parsePriceFromGoogle($googleHtml);
+            }
+        }
+
+        // ========================================================================
+        // FASE 3: GOOGLE SEARCH VÍA API BÁSICA (1 CRÉDITO)
+        // Si Google bloqueó nuestro servidor, usamos la API barata para ver el snippet
+        // ========================================================================
+        if ($price === false && !empty(self::SCRAPER_API_KEY) && isset($googleHtml) && self::isGoogleBlocked($googleHtml)) {
+            $googleHtmlApi = self::fetchUrl($googleUrl, 'www.google.es', 0, true, false, false);
+            if (!empty($googleHtmlApi) && !self::isGoogleBlocked($googleHtmlApi)) {
+                $price = self::parsePriceFromGoogle($googleHtmlApi);
+            }
+        }
+
+        // ========================================================================
+        // FASE 4: COMPETIDOR VÍA API BÁSICA (1 CRÉDITO)
+        // Leemos la web original pero con proxies de centro de datos baratos
         // ========================================================================
         if ($price === false && !empty(self::SCRAPER_API_KEY)) {
-            
-            // 2.1 API SIN RENDERIZAR JS (Recupera __NEXT_DATA__ y __INITIAL_STATE__ puros)
-            $htmlApi = self::fetchUrl($url, $host, 0, true, false);
-            $price = self::parsePriceFromHtml($htmlApi, $host);
-            
-            // 2.2 API CON RENDERIZADO JS (Si el precio se inyecta dinámicamente)
-            if ($price === false && self::isBlocked($htmlApi)) {
-                $htmlApiRender = self::fetchUrl($url, $host, 0, true, true);
-                $price = self::parsePriceFromHtml($htmlApiRender, $host);
+            $htmlApi = self::fetchUrl($url, $host, 0, true, false, false);
+            if (!empty($htmlApi) && !self::isBlocked($htmlApi)) {
+                $price = self::parsePriceFromHtml($htmlApi, $host);
+            }
+        }
+
+        // ========================================================================
+        // FASE 5: COMPETIDOR VÍA API PREMIUM + RENDER JS (10 - 25 CRÉDITOS)
+        // El último recurso. Solo si no está en Google y Cloudflare es implacable.
+        // ========================================================================
+        if ($price === false && !empty(self::SCRAPER_API_KEY)) {
+            $needsPremium = (strpos($host, 'madridhifi') !== false || strpos($host, 'pccomponentes') !== false || strpos($host, 'amazon') !== false);
+            if ($needsPremium) {
+                $htmlApiRender = self::fetchUrl($url, $host, 0, true, true, true);
+                if (!empty($htmlApiRender) && !self::isBlocked($htmlApiRender)) {
+                    $price = self::parsePriceFromHtml($htmlApiRender, $host);
+                }
             }
         }
 
         return $price;
+    }
+
+    /**
+     * Extrae el precio de los resultados de búsqueda de Google (Rich Snippets / Shopping)
+     */
+    private static function parsePriceFromGoogle($html)
+    {
+        // Aislar la zona de resultados para ignorar precios en menús u otras partes
+        $start = strpos($html, 'id="search"');
+        $searchBlock = $html;
+        
+        if ($start !== false) {
+            $end = strpos($html, 'id="bottomads"');
+            if ($end !== false && $end > $start) {
+                $searchBlock = substr($html, $start, $end - $start);
+            } else {
+                $searchBlock = substr($html, $start);
+            }
+        }
+
+        // Busca patrones típicos de precio en el snippet (Ej: 599,00 €)
+        if (preg_match_all('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)(?:\s|&nbsp;)*(?:€|&euro;|EUR)/ui', $searchBlock, $matches)) {
+            foreach ($matches[1] as $match) {
+                $clean = self::cleanPriceString($match);
+                // Evitamos coger precios minúsculos que suelen ser de "Gastos de envío 3,99 €"
+                if ($clean > 5) { 
+                    return $clean; // Devuelve el primer precio válido encontrado en el resultado exacto
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -71,24 +132,18 @@ class SmartPriceScraper
         @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
         $xpath = new DOMXPath($dom);
 
-        // --- ESTRATEGIA 1: EXTRACCIÓN DEL NÚCLEO REACT / NEXT.JS (MÁXIMA PRECISIÓN) ---
-
+        // --- ESTRATEGIA 1: EXTRACCIÓN DEL NÚCLEO REACT / NEXT.JS ---
         if (strpos($host, 'pccomponentes') !== false) {
-            // Buscamos directamente en el estado global de la aplicación
             if (preg_match('/"price"\s*:\s*"?([0-9]+(?:[\.,][0-9]{1,2})?)"?/i', $html, $matches) ||
                 preg_match('/"priceAmount"\s*:\s*"?([0-9]+(?:[\.,][0-9]{1,2})?)"?/i', $html, $matches)) {
                 $clean = self::cleanPriceString($matches[1]);
                 if ($clean > 0) return $clean;
             }
-            // Fallback visual PcComponentes
             $pccPrice = $xpath->query('//*[@id="precio-main"] | //*[@data-e2e="price-card"]//span | //div[contains(@class, "buy-box")]//*[contains(@class, "price")]');
-            if ($pccPrice->length > 0) {
-                return self::cleanPriceString($pccPrice->item(0)->nodeValue);
-            }
+            if ($pccPrice->length > 0) return self::cleanPriceString($pccPrice->item(0)->nodeValue);
         }
 
         if (strpos($host, 'madridhifi') !== false) {
-            // Buscamos en el bloque de datos de Next.js
             $nextData = $xpath->query('//script[@id="__NEXT_DATA__"]');
             if ($nextData->length > 0) {
                 if (preg_match('/"price"\s*:\s*"?([0-9]+(?:[\.,][0-9]{1,2})?)"?/i', $nextData->item(0)->nodeValue, $matches)) {
@@ -96,18 +151,13 @@ class SmartPriceScraper
                     if ($clean > 0) return $clean;
                 }
             }
-            // Fallback visual Madrid HiFi
             $mhPrice = $xpath->query('//*[@id="our_price_display"] | //*[contains(@class, "product-price")] | //div[contains(@class, "price")]/span[@class="value"]');
-            if ($mhPrice->length > 0) {
-                return self::cleanPriceString($mhPrice->item(0)->nodeValue);
-            }
+            if ($mhPrice->length > 0) return self::cleanPriceString($mhPrice->item(0)->nodeValue);
         }
 
         if (strpos($host, 'amazon') !== false) {
             $amazonPrice = $xpath->query('//span[contains(@class, "a-price")]/span[contains(@class, "a-offscreen")]');
-            if ($amazonPrice->length > 0) {
-                return self::cleanPriceString($amazonPrice->item(0)->nodeValue);
-            }
+            if ($amazonPrice->length > 0) return self::cleanPriceString($amazonPrice->item(0)->nodeValue);
         }
 
         // --- ESTRATEGIA 2: JSON-LD (Schema.org) ---
@@ -145,11 +195,24 @@ class SmartPriceScraper
     }
 
     /**
-     * Evalúa si el HTML devuelto es una página de bloqueo, captchas o está demasiado vacía
+     * Evalúa si Google nos ha lanzado un Captcha
+     */
+    private static function isGoogleBlocked($html)
+    {
+        if (empty(trim($html))) return true;
+        $htmlLower = strtolower($html);
+        return (strpos($htmlLower, 'id="captcha"') !== false || 
+                strpos($htmlLower, 'recaptcha') !== false || 
+                strpos($htmlLower, 'tráfico inusual') !== false || 
+                strpos($htmlLower, 'unusual traffic') !== false);
+    }
+
+    /**
+     * Evalúa si el HTML devuelto es una página de bloqueo general
      */
     private static function isBlocked($html)
     {
-        if (empty(trim($html)) || strlen($html) < 1000) return true; // Si el HTML es enano, nos han cortado
+        if (empty(trim($html)) || strlen($html) < 1000) return true; 
         $htmlLower = strtolower($html);
         return (
             (strpos($htmlLower, 'cloudflare') !== false && strpos($htmlLower, 'ray id') !== false) ||
@@ -160,9 +223,9 @@ class SmartPriceScraper
     }
 
     /**
-     * Sistema de peticiones rotativo y camuflado
+     * Sistema de peticiones rotativo: Soporta Local, API Básica y API Premium
      */
-    private static function fetchUrl($url, $host, $botLevel = 0, $useApi = false, $renderJs = false)
+    private static function fetchUrl($url, $host, $botLevel = 0, $useApi = false, $renderJs = false, $premium = false)
     {
         $ch = curl_init();
         
@@ -172,7 +235,7 @@ class SmartPriceScraper
             if ($renderJs) {
                 $apiUrl .= '&render=true';
             }
-            if (strpos($host, 'madridhifi') !== false || strpos($host, 'pccomponentes') !== false || strpos($host, 'amazon') !== false) {
+            if ($premium) {
                 $apiUrl .= '&premium=true';
             }
             
@@ -180,7 +243,7 @@ class SmartPriceScraper
             curl_setopt($ch, CURLOPT_TIMEOUT, 60); 
         } else {
             curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 12); 
+            curl_setopt($ch, CURLOPT_TIMEOUT, 15); 
         }
 
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -201,9 +264,6 @@ class SmartPriceScraper
                 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
                 'Accept-Language: es-ES,es;q=0.9,en;q=0.8',
                 'Cache-Control: max-age=0',
-                'Sec-Fetch-Dest: document',
-                'Sec-Fetch-Mode: navigate',
-                'Sec-Fetch-Site: none',
                 'Upgrade-Insecure-Requests: 1'
             ]);
         }
@@ -211,8 +271,6 @@ class SmartPriceScraper
         $html = curl_exec($ch);
         curl_close($ch);
 
-        // Ya NO abortamos la misión por culpa de los errores 403. Devolvemos el HTML en bruto 
-        // para que las funciones de extracción hagan su magia.
         return $html;
     }
 
