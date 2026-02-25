@@ -1,6 +1,7 @@
 <?php
 /**
  * Módulo Rastreador Inteligente de Precios de Competencia
+ * Versión mejorada con búsqueda automática
  */
 
 if (!defined('_PS_VERSION_')) {
@@ -15,7 +16,7 @@ class SmartPriceTracker extends Module
     {
         $this->name = 'smartpricetracker';
         $this->tab = 'administration';
-        $this->version = '2.1.0';
+        $this->version = '2.1.1';
         $this->author = 'Tu Nombre/Agencia';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -67,7 +68,7 @@ class SmartPriceTracker extends Module
         }
         $tab->id_parent = -1; 
         $tab->module = $this->name;
-        $tab->add();
+        return $tab->add();
     }
 
     private function uninstallTab()
@@ -75,8 +76,9 @@ class SmartPriceTracker extends Module
         $id_tab = (int)Tab::getIdFromClassName('AdminSmartPriceTrackerAjax');
         if ($id_tab) {
             $tab = new Tab($id_tab);
-            $tab->delete();
+            return $tab->delete();
         }
+        return true;
     }
 
     /**
@@ -89,24 +91,51 @@ class SmartPriceTracker extends Module
 
         // Prevención: Si el producto es nuevo y aún no se ha guardado, no podemos buscarlo
         if (!$id_product) {
-            return '<div class="alert alert-info mt-3" role="alert"><p class="alert-text">Debes guardar el producto por primera vez para poder usar el Radar de Precios.</p></div>';
+            return '<div class="alert alert-info mt-3" role="alert">
+                        <p class="alert-text">
+                            <i class="material-icons">info</i>
+                            Debes guardar el producto por primera vez para poder usar el Radar de Precios.
+                        </p>
+                    </div>';
+        }
+
+        // Verificar que el producto existe
+        if (!Product::existsInDatabase($id_product, 'product')) {
+            return '<div class="alert alert-warning mt-3" role="alert">
+                        <p class="alert-text">
+                            <i class="material-icons">warning</i>
+                            El producto no existe en la base de datos.
+                        </p>
+                    </div>';
         }
 
         $product = new Product($id_product);
         $id_lang = (int)$this->context->language->id;
         
-        // EXTRACCIÓN SEGURA DEL NOMBRE (Evita el error "Array to string conversion" que deja la pantalla en blanco)
+        // EXTRACCIÓN SEGURA DEL NOMBRE (Evita el error "Array to string conversion")
         $product_name = '';
         if (is_array($product->name)) {
-            $product_name = isset($product->name[$id_lang]) && !empty($product->name[$id_lang]) ? $product->name[$id_lang] : current($product->name);
+            $product_name = isset($product->name[$id_lang]) && !empty($product->name[$id_lang]) 
+                ? $product->name[$id_lang] 
+                : current($product->name);
         } else {
             $product_name = $product->name;
+        }
+
+        // Si no hay nombre, no podemos buscar
+        if (empty($product_name)) {
+            return '<div class="alert alert-warning mt-3" role="alert">
+                        <p class="alert-text">
+                            <i class="material-icons">warning</i>
+                            El producto no tiene un nombre asignado. Añade un nombre para poder usar el Radar de Precios.
+                        </p>
+                    </div>';
         }
 
         $db = Db::getInstance();
 
         // Obtener datos guardados de este producto
-        $row = $db->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'smart_competitor_price` WHERE id_product = ' . $id_product);
+        $row = $db->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'smart_competitor_price` WHERE id_product = ' . (int)$id_product);
         
         // Si ya habíamos buscado algo, cargamos ese término, si no, usamos el nombre del producto
         $search_term = $row && !empty($row['search_term']) ? $row['search_term'] : $product_name;
@@ -114,17 +143,22 @@ class SmartPriceTracker extends Module
         $competitors_data = $row && !empty($row['competitors_data']) ? json_decode($row['competitors_data'], true) : [];
         $last_scan = $row ? $row['last_scan'] : null;
 
+        // Obtener el precio actual del producto
         $my_price = Product::getPriceStatic($id_product, true);
 
         // Pre-calcular diferencias de la caché
-        if (is_array($competitors_data)) {
+        if (is_array($competitors_data) && !empty($competitors_data)) {
             foreach ($competitors_data as &$comp) {
-                $comp['diff'] = $my_price - $comp['price'];
+                if (isset($comp['price'])) {
+                    $comp['diff'] = $my_price - $comp['price'];
+                }
             }
         }
 
+        // Link AJAX
         $ajax_link = $this->context->link->getAdminLink('AdminSmartPriceTrackerAjax');
 
+        // Asignar variables a Smarty
         $this->context->smarty->assign(array(
             'id_product' => $id_product,
             'search_term' => $search_term,

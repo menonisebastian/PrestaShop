@@ -19,11 +19,20 @@ class AdminSmartPriceTrackerAjaxController extends ModuleAdminController
             ]));
         }
 
-        // Llamamos al motor de búsqueda masiva
+        // Validar que el producto existe
+        if (!$id_product || !Product::existsInDatabase($id_product, 'product')) {
+            die(json_encode([
+                'success' => false, 
+                'error' => 'El producto no existe.'
+            ]));
+        }
+
+        // Llamamos al motor de búsqueda masiva (AHORA SÍ EXISTE)
         $competitors = SmartPriceScraper::searchCompetitorsByTitle($search_term);
 
         if ($competitors !== false && count($competitors) > 0) {
             
+            // Guardar los resultados en formato JSON
             $json_data = json_encode($competitors);
 
             // Guardar en BD
@@ -36,9 +45,10 @@ class AdminSmartPriceTrackerAjaxController extends ModuleAdminController
             
             Db::getInstance()->execute($sql);
 
+            // Obtener el precio del producto actual
             $my_price = Product::getPriceStatic($id_product, true);
 
-            // Calcular diferencias para enviarlas calculadas al front
+            // Calcular diferencias para enviarlas al frontend
             foreach ($competitors as &$comp) {
                 $comp['diff'] = $my_price - $comp['price'];
                 $comp['price_formatted'] = number_format($comp['price'], 2, ',', '.') . ' €';
@@ -55,7 +65,7 @@ class AdminSmartPriceTrackerAjaxController extends ModuleAdminController
         } else {
             die(json_encode([
                 'success' => false, 
-                'error' => 'No se han encontrado resultados de precios para este producto en Google Shopping.'
+                'error' => 'No se han encontrado resultados de precios para este producto en Google Shopping. Intenta con un nombre de búsqueda diferente o verifica que el producto exista en el mercado.'
             ]));
         }
     }
