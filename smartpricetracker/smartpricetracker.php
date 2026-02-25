@@ -7,35 +7,33 @@ if (!defined('_PS_VERSION_')) {
     exit;
 }
 
-// Requerimos la clase que hace el scraping de forma segura
 require_once dirname(__FILE__) . '/classes/SmartPriceScraper.php';
 
 class SmartPriceTracker extends Module
 {
     public function __construct()
     {
-        // El nombre debe coincidir EXACTAMENTE con el de la carpeta y el archivo .php
         $this->name = 'smartpricetracker';
         $this->tab = 'administration';
-        $this->version = '1.0.0';
-        $this->author = 'Sebastián/Sysproviders';
+        $this->version = '2.1.0';
+        $this->author = 'Tu Nombre/Agencia';
         $this->need_instance = 0;
         $this->bootstrap = true;
 
         parent::__construct();
 
-        $this->displayName = $this->l('Smart Price Tracker (Competencia)');
-        $this->description = $this->l('Rastrea el precio de un competidor mediante JSON-LD al entrar en un producto para comparar precios.');
+        $this->displayName = $this->l('Radar de Precios (Competencia)');
+        $this->description = $this->l('Busca el producto en Google Shopping y muestra una lista de competidores y sus precios.');
         $this->ps_versions_compliancy = array('min' => '1.7.0.0', 'max' => '8.99.99');
     }
 
     public function install()
     {
-        // Crear tabla en la base de datos con un prefijo único para este módulo
+        // Crear tabla para el historial del radar
         $sql = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'smart_competitor_price` (
             `id_product` INT(10) UNSIGNED NOT NULL PRIMARY KEY,
-            `competitor_url` VARCHAR(500) NOT NULL,
-            `last_price` DECIMAL(20,6) NOT NULL,
+            `search_term` VARCHAR(255) NOT NULL,
+            `competitors_data` TEXT NOT NULL,
             `last_scan` DATETIME NOT NULL
         ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8;';
 
@@ -43,7 +41,6 @@ class SmartPriceTracker extends Module
             return false;
         }
 
-        // Instalar pestaña oculta para las peticiones AJAX en el Back-office
         $this->installTab();
 
         return parent::install() &&
@@ -52,10 +49,8 @@ class SmartPriceTracker extends Module
 
     public function uninstall()
     {
-        // Eliminar la tabla de la base de datos
         $sql = 'DROP TABLE IF EXISTS `' . _DB_PREFIX_ . 'smart_competitor_price`';
         Db::getInstance()->execute($sql);
-
         $this->uninstallTab();
 
         return parent::uninstall();
@@ -65,13 +60,12 @@ class SmartPriceTracker extends Module
     {
         $tab = new Tab();
         $tab->active = 1;
-        // El class_name debe coincidir con el prefijo "Admin" + el nombre del controlador sin "Controller"
         $tab->class_name = 'AdminSmartPriceTrackerAjax';
         $tab->name = array();
         foreach (Language::getLanguages(true) as $lang) {
             $tab->name[$lang['id_lang']] = 'Smart Price Tracker Ajax';
         }
-        $tab->id_parent = -1; // Pestaña oculta, no visible en el menú izquierdo
+        $tab->id_parent = -1; 
         $tab->module = $this->name;
         $tab->add();
     }
@@ -86,57 +80,60 @@ class SmartPriceTracker extends Module
     }
 
     /**
-     * Hook que dibuja nuestra pestaña en la ficha de edición del producto
+     * Dibuja la pestaña en la ficha del producto
      */
     public function hookDisplayAdminProductsExtra($params)
     {
-        $id_product = (int)$params['id_product'];
+        // PS 8.1 a veces pasa el id_product en params, otras veces por GET/POST
+        $id_product = isset($params['id_product']) ? (int)$params['id_product'] : (int)Tools::getValue('id_product');
+
+        // Prevención: Si el producto es nuevo y aún no se ha guardado, no podemos buscarlo
+        if (!$id_product) {
+            return '<div class="alert alert-info mt-3" role="alert"><p class="alert-text">Debes guardar el producto por primera vez para poder usar el Radar de Precios.</p></div>';
+        }
+
+        $product = new Product($id_product);
+        $id_lang = (int)$this->context->language->id;
+        
+        // EXTRACCIÓN SEGURA DEL NOMBRE (Evita el error "Array to string conversion" que deja la pantalla en blanco)
+        $product_name = '';
+        if (is_array($product->name)) {
+            $product_name = isset($product->name[$id_lang]) && !empty($product->name[$id_lang]) ? $product->name[$id_lang] : current($product->name);
+        } else {
+            $product_name = $product->name;
+        }
+
         $db = Db::getInstance();
 
-        // 1. Obtener datos guardados de este producto en nuestra tabla
+        // Obtener datos guardados de este producto
         $row = $db->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'smart_competitor_price` WHERE id_product = ' . $id_product);
         
-        $competitor_url = $row ? $row['competitor_url'] : '';
-        $last_price = $row ? (float)$row['last_price'] : 0.0;
+        // Si ya habíamos buscado algo, cargamos ese término, si no, usamos el nombre del producto
+        $search_term = $row && !empty($row['search_term']) ? $row['search_term'] : $product_name;
+        
+        $competitors_data = $row && !empty($row['competitors_data']) ? json_decode($row['competitors_data'], true) : [];
         $last_scan = $row ? $row['last_scan'] : null;
 
-        // 2. Auto-escaneo: Si han pasado más de 24 horas, volvemos a raspar silenciosamente
-        if ($competitor_url && $last_scan && strtotime($last_scan) < strtotime('-24 hours')) {
-            $new_price = SmartPriceScraper::getCompetitorPrice($competitor_url);
-            if ($new_price !== false) {
-                $last_price = $new_price;
-                $last_scan = date('Y-m-d H:i:s');
-                $db->update('smart_competitor_price', [
-                    'last_price' => $last_price,
-                    'last_scan' => $last_scan
-                ], 'id_product = ' . $id_product);
+        $my_price = Product::getPriceStatic($id_product, true);
+
+        // Pre-calcular diferencias de la caché
+        if (is_array($competitors_data)) {
+            foreach ($competitors_data as &$comp) {
+                $comp['diff'] = $my_price - $comp['price'];
             }
         }
 
-        // 3. Obtener el precio final de nuestra tienda (con impuestos incluidos)
-        $my_price = Product::getPriceStatic($id_product, true);
-        
-        // 4. Calcular diferencia de precios
-        $diff = 0;
-        if ($last_price > 0) {
-            $diff = $my_price - $last_price;
-        }
-
-        // 5. Preparar enlace seguro al controlador AJAX para el botón manual
         $ajax_link = $this->context->link->getAdminLink('AdminSmartPriceTrackerAjax');
 
-        // Asignar variables a la plantilla Smarty
         $this->context->smarty->assign(array(
             'id_product' => $id_product,
-            'competitor_url' => $competitor_url,
-            'last_price' => $last_price,
+            'search_term' => $search_term,
+            'competitors' => $competitors_data,
             'last_scan' => $last_scan,
             'my_price' => $my_price,
-            'diff' => $diff,
             'ajax_link' => $ajax_link
         ));
 
-        // Renderizar la vista
         return $this->display(__FILE__, 'views/templates/hook/admin_products_extra.tpl');
     }
 }

@@ -1,56 +1,61 @@
 <?php
 /**
- * Controlador para procesar la petición AJAX asíncrona desde el Back-office
+ * Controlador para procesar el Radar de Precios masivo
  */
 
 require_once dirname(__FILE__) . '/../../classes/SmartPriceScraper.php';
 
 class AdminSmartPriceTrackerAjaxController extends ModuleAdminController
 {
-    public function ajaxProcessSaveAndScan()
+    public function ajaxProcessSearchCompetitors()
     {
         $id_product = (int)Tools::getValue('id_product');
-        $url = trim(Tools::getValue('competitor_url'));
+        $search_term = trim(Tools::getValue('search_term'));
 
-        if (empty($url) || !Validate::isAbsoluteUrl($url)) {
+        if (empty($search_term)) {
             die(json_encode([
                 'success' => false, 
-                'error' => 'Por favor, introduce una URL válida con http:// o https://'
+                'error' => 'Por favor, introduce el nombre del producto para buscar.'
             ]));
         }
 
-        // 1. Ejecutamos nuestro motor de scraping en la URL recibida
-        $price = SmartPriceScraper::getCompetitorPrice($url);
+        // Llamamos al motor de búsqueda masiva
+        $competitors = SmartPriceScraper::searchCompetitorsByTitle($search_term);
 
-        if ($price !== false) {
-            // 2. Guardar o actualizar la base de datos `smart_competitor_price`
-            $sql = 'INSERT INTO `' . _DB_PREFIX_ . 'smart_competitor_price` (id_product, competitor_url, last_price, last_scan)
-                    VALUES (' . $id_product . ', "' . pSQL($url) . '", ' . (float)$price . ', NOW())
+        if ($competitors !== false && count($competitors) > 0) {
+            
+            $json_data = json_encode($competitors);
+
+            // Guardar en BD
+            $sql = 'INSERT INTO `' . _DB_PREFIX_ . 'smart_competitor_price` (id_product, search_term, competitors_data, last_scan)
+                    VALUES (' . $id_product . ', "' . pSQL($search_term) . '", "' . pSQL($json_data, true) . '", NOW())
                     ON DUPLICATE KEY UPDATE 
-                    competitor_url = "' . pSQL($url) . '", 
-                    last_price = ' . (float)$price . ', 
+                    search_term = "' . pSQL($search_term) . '", 
+                    competitors_data = "' . pSQL($json_data, true) . '", 
                     last_scan = NOW()';
             
             Db::getInstance()->execute($sql);
 
-            // 3. Recalcular la diferencia usando nuestro precio de Prestashop (Con IVA incluido)
             $my_price = Product::getPriceStatic($id_product, true);
-            $diff = $my_price - $price;
 
-            // 4. Devolver la respuesta en JSON al Javascript de la plantilla
+            // Calcular diferencias para enviarlas calculadas al front
+            foreach ($competitors as &$comp) {
+                $comp['diff'] = $my_price - $comp['price'];
+                $comp['price_formatted'] = number_format($comp['price'], 2, ',', '.') . ' €';
+                $comp['diff_formatted'] = number_format(abs($comp['diff']), 2, ',', '.') . ' €';
+            }
+
             die(json_encode([
                 'success' => true, 
-                'competitor_price' => number_format($price, 2), 
-                'my_price' => number_format($my_price, 2),
-                'diff' => number_format($diff, 2),
-                'diff_raw' => $diff,
+                'competitors' => $competitors,
+                'my_price_formatted' => number_format($my_price, 2, ',', '.') . ' €',
+                'my_price' => $my_price,
                 'last_scan' => date('d/m/Y H:i:s')
             ]));
         } else {
-            // Falla si no encuentra JSON-LD o la página devuelve error 404/500
             die(json_encode([
                 'success' => false, 
-                'error' => 'No se ha podido localizar el precio en los datos estructurados (JSON-LD) de esa URL.'
+                'error' => 'No se han encontrado resultados de precios para este producto en Google Shopping.'
             ]));
         }
     }
