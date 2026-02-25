@@ -16,45 +16,44 @@ class SmartPriceScraper
             return false;
         }
 
-        // Ampliamos el tiempo máximo de ejecución de PHP. 
-        // Renderizar JS a través de proxies residenciales puede tardar hasta 40 segundos.
         @set_time_limit(120);
 
         $host = parse_url($url, PHP_URL_HOST);
         $price = false;
 
         // ========================================================================
-        // FASE 1: INTENTO LOCAL (SIN API - AHORRA CRÉDITOS)
+        // FASE 1: INTENTOS LOCALES (AHORRA CRÉDITOS Y ES MUY RÁPIDO)
         // ========================================================================
         
-        // Intento 1.1: Navegador Chrome Normal
-        $html = self::fetchUrl($url, $host, 0, false);
+        // 1.1 Navegador Chrome Normal
+        $html = self::fetchUrl($url, $host, 0, false, false);
+        $price = self::parsePriceFromHtml($html, $host);
 
-        // Si nos bloquea el WAF, intentamos usar disfraces locales
-        if (self::isBlocked($html)) {
-            // Intento 1.2: Disfraz de Facebook Bot
-            $html = self::fetchUrl($url, $host, 1, false);
+        // 1.2 Si falló y parece bloqueado, disfraz de Facebook Bot
+        if ($price === false && self::isBlocked($html)) {
+            $html = self::fetchUrl($url, $host, 1, false, false);
+            $price = self::parsePriceFromHtml($html, $host);
             
-            if (self::isBlocked($html)) {
-                // Intento 1.3: Disfraz de Googlebot
-                $html = self::fetchUrl($url, $host, 2, false);
+            // 1.3 Si falló, disfraz de Googlebot
+            if ($price === false && self::isBlocked($html)) {
+                $html = self::fetchUrl($url, $host, 2, false, false);
+                $price = self::parsePriceFromHtml($html, $host);
             }
         }
 
-        // Si el HTML local es válido (no está bloqueado), intentamos sacar el precio
-        if (!empty($html) && !self::isBlocked($html)) {
-            $price = self::parsePriceFromHtml($html, $host);
-        }
-
         // ========================================================================
-        // FASE 2: API DE RESCATE (SOLO SI LO LOCAL FALLA O EL PRECIO ESTÁ OCULTO EN JS)
+        // FASE 2: API DE RESCATE (CUANDO EL SERVIDOR ESTÁ TOTALMENTE BANEADO)
         // ========================================================================
         if ($price === false && !empty(self::SCRAPER_API_KEY)) {
-            // Usamos $useApi = true
-            $htmlApi = self::fetchUrl($url, $host, 0, true);
             
-            if (!empty($htmlApi) && !self::isBlocked($htmlApi)) {
-                $price = self::parsePriceFromHtml($htmlApi, $host);
+            // 2.1 API SIN RENDERIZAR JS (Recupera __NEXT_DATA__ y __INITIAL_STATE__ puros)
+            $htmlApi = self::fetchUrl($url, $host, 0, true, false);
+            $price = self::parsePriceFromHtml($htmlApi, $host);
+            
+            // 2.2 API CON RENDERIZADO JS (Si el precio se inyecta dinámicamente)
+            if ($price === false && self::isBlocked($htmlApi)) {
+                $htmlApiRender = self::fetchUrl($url, $host, 0, true, true);
+                $price = self::parsePriceFromHtml($htmlApiRender, $host);
             }
         }
 
@@ -62,107 +61,81 @@ class SmartPriceScraper
     }
 
     /**
-     * Contiene todas las estrategias de lectura del HTML (Separado y Priorizado)
+     * Estrategias de lectura del HTML (Prioridad absoluta al código fuente limpio)
      */
     private static function parsePriceFromHtml($html, $host)
     {
-        // Parsear DOM principal
+        if (empty(trim($html))) return false;
+
         $dom = new DOMDocument();
         @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
         $xpath = new DOMXPath($dom);
 
-        // --- ESTRATEGIA 1: CASOS ESPECÍFICOS POR DOMINIO (MÁXIMA PRIORIDAD) ---
-        // Al poner esto primero, evitamos que coja el precio "sin IVA" del OpenGraph 
-        // o el precio de un producto relacionado en el JSON-LD.
+        // --- ESTRATEGIA 1: EXTRACCIÓN DEL NÚCLEO REACT / NEXT.JS (MÁXIMA PRECISIÓN) ---
 
-        // 1A: PcComponentes
         if (strpos($host, 'pccomponentes') !== false) {
-            $pccPrice = $xpath->query('//*[@id="precio-main"] | //div[@id="precio-main"] | //*[@data-e2e="price-card"]//span | //div[contains(@class, "buy-box")]//*[contains(@class, "price")] | //div[contains(@class, "PriceBlock")]');
+            // Buscamos directamente en el estado global de la aplicación
+            if (preg_match('/"price"\s*:\s*"?([0-9]+(?:[\.,][0-9]{1,2})?)"?/i', $html, $matches) ||
+                preg_match('/"priceAmount"\s*:\s*"?([0-9]+(?:[\.,][0-9]{1,2})?)"?/i', $html, $matches)) {
+                $clean = self::cleanPriceString($matches[1]);
+                if ($clean > 0) return $clean;
+            }
+            // Fallback visual PcComponentes
+            $pccPrice = $xpath->query('//*[@id="precio-main"] | //*[@data-e2e="price-card"]//span | //div[contains(@class, "buy-box")]//*[contains(@class, "price")]');
             if ($pccPrice->length > 0) {
-                foreach ($pccPrice as $node) {
-                    $clean = self::cleanPriceString($node->nodeValue);
-                    // Devolvemos el primero que sea un número válido y mayor que 0
-                    if ($clean > 0) return $clean;
-                }
+                return self::cleanPriceString($pccPrice->item(0)->nodeValue);
             }
         }
 
-        // 1B: Madrid HiFi
         if (strpos($host, 'madridhifi') !== false) {
-            $mhPrice = $xpath->query('//*[@id="our_price_display"] | //*[contains(@class, "price")]/span[@class="value"] | //*[contains(@class, "product-price")] | //div[contains(@class, "price")]');
-            if ($mhPrice->length > 0) {
-                foreach ($mhPrice as $node) {
-                    $clean = self::cleanPriceString($node->nodeValue);
+            // Buscamos en el bloque de datos de Next.js
+            $nextData = $xpath->query('//script[@id="__NEXT_DATA__"]');
+            if ($nextData->length > 0) {
+                if (preg_match('/"price"\s*:\s*"?([0-9]+(?:[\.,][0-9]{1,2})?)"?/i', $nextData->item(0)->nodeValue, $matches)) {
+                    $clean = self::cleanPriceString($matches[1]);
                     if ($clean > 0) return $clean;
                 }
             }
+            // Fallback visual Madrid HiFi
+            $mhPrice = $xpath->query('//*[@id="our_price_display"] | //*[contains(@class, "product-price")] | //div[contains(@class, "price")]/span[@class="value"]');
+            if ($mhPrice->length > 0) {
+                return self::cleanPriceString($mhPrice->item(0)->nodeValue);
+            }
         }
 
-        // 1C: Amazon
         if (strpos($host, 'amazon') !== false) {
             $amazonPrice = $xpath->query('//span[contains(@class, "a-price")]/span[contains(@class, "a-offscreen")]');
             if ($amazonPrice->length > 0) {
-                $clean = self::cleanPriceString($amazonPrice->item(0)->nodeValue);
-                if ($clean > 0) return $clean;
+                return self::cleanPriceString($amazonPrice->item(0)->nodeValue);
             }
         }
 
-        // --- ESTRATEGIA 2: Meta Tags Open Graph (Facebook / Pinterest) ---
-        $ogPrice = $xpath->query('//meta[@property="product:price:amount"]/@content | //meta[@name="twitter:data1"]/@content');
-        if ($ogPrice->length > 0) {
-            $priceStr = $ogPrice->item(0)->nodeValue;
-            $cleanPrice = self::cleanPriceString($priceStr);
-            if ($cleanPrice !== false && $cleanPrice > 0) return $cleanPrice;
-        }
-
-        // --- ESTRATEGIA 3: Extracción directa de JSON-LD (Schema.org) ---
+        // --- ESTRATEGIA 2: JSON-LD (Schema.org) ---
         if (preg_match_all('/<script[^>]*type="application\/ld\+json"[^>]*>(.*?)<\/script>/is', $html, $matches)) {
             foreach ($matches[1] as $jsonStr) {
                 $data = @json_decode(trim($jsonStr), true);
                 if (!$data) continue;
-                
                 $dataToProcess = isset($data['@graph']) ? $data['@graph'] : [$data];
                 $price = self::extractPriceFromSchema($dataToProcess);
                 if ($price !== false && $price > 0) return $price;
             }
         }
 
-        // --- ESTRATEGIA 4: JSON Interno de Next.js (__NEXT_DATA__) ---
-        $nextData = $xpath->query('//script[@id="__NEXT_DATA__"]');
-        if ($nextData->length > 0) {
-            $jsonStr = $nextData->item(0)->nodeValue;
-            if (preg_match('/"price"\s*:\s*([0-9]+(?:[\.,][0-9]{1,2})?)/i', $jsonStr, $matches) || 
-                preg_match('/"priceAmount"\s*:\s*([0-9]+(?:[\.,][0-9]{1,2})?)/i', $jsonStr, $matches)) {
-                $cleanPrice = self::cleanPriceString($matches[1]);
-                if ($cleanPrice !== false && $cleanPrice > 0) return $cleanPrice;
-            }
+        // --- ESTRATEGIA 3: Meta Tags Open Graph ---
+        $ogPrice = $xpath->query('//meta[@property="product:price:amount"]/@content | //meta[@name="twitter:data1"]/@content');
+        if ($ogPrice->length > 0) {
+            $cleanPrice = self::cleanPriceString($ogPrice->item(0)->nodeValue);
+            if ($cleanPrice !== false && $cleanPrice > 0) return $cleanPrice;
         }
 
-        // --- ESTRATEGIA 5: Microdatos HTML Clásicos ---
-        $microdata = $xpath->query('//*[@itemprop="price"]');
+        // --- ESTRATEGIA 4: Atributos y Microdatos HTML ---
+        $microdata = $xpath->query('//*[@itemprop="price"]/@content | //*[@data-price]/@data-price');
         if ($microdata->length > 0) {
-            $priceStr = $microdata->item(0)->getAttribute('content');
-            if (empty($priceStr)) $priceStr = $microdata->item(0)->nodeValue;
-            $cleanPrice = self::cleanPriceString($priceStr);
+            $cleanPrice = self::cleanPriceString($microdata->item(0)->nodeValue);
             if ($cleanPrice !== false && $cleanPrice > 0) return $cleanPrice;
         }
 
-        // --- ESTRATEGIA 6: Atributos HTML "data-price" ---
-        $dataPrices = $xpath->query('//*[@data-price]/@data-price | //*[@data-product-price]/@data-product-price');
-        if ($dataPrices->length > 0) {
-            $priceStr = $dataPrices->item(0)->nodeValue;
-            $cleanPrice = self::cleanPriceString($priceStr);
-            if ($cleanPrice !== false && $cleanPrice > 0) return $cleanPrice;
-        }
-
-        // --- ESTRATEGIA 7: Regex Crudo sobre el HTML ---
-        if (preg_match('/"price"\s*:\s*"?([0-9]+(?:[\.,][0-9]{1,2})?)"?/i', $html, $matches)) {
-            $cleanPrice = self::cleanPriceString($matches[1]);
-            if ($cleanPrice !== false && $cleanPrice > 0) return $cleanPrice;
-        }
-
-        // --- ESTRATEGIA 8: Búsqueda visual bruta del precio ---
-        // Mejorada para captar precios con o sin decimales al lado del símbolo de Euro
+        // --- ESTRATEGIA 5: Regex Crudo y Visual ---
         if (preg_match('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)\s*(?:€|&euro;|EUR)/ui', $html, $matches)) {
             $cleanPrice = self::cleanPriceString($matches[1]);
             if ($cleanPrice !== false && $cleanPrice > 0) return $cleanPrice;
@@ -172,41 +145,40 @@ class SmartPriceScraper
     }
 
     /**
-     * Evalúa si el HTML devuelto es una página de bloqueo de Cloudflare/Datadome
+     * Evalúa si el HTML devuelto es una página de bloqueo, captchas o está demasiado vacía
      */
     private static function isBlocked($html)
     {
-        if (empty(trim($html))) return true;
+        if (empty(trim($html)) || strlen($html) < 1000) return true; // Si el HTML es enano, nos han cortado
         $htmlLower = strtolower($html);
         return (
             (strpos($htmlLower, 'cloudflare') !== false && strpos($htmlLower, 'ray id') !== false) ||
             strpos($htmlLower, 'datadome') !== false ||
             strpos($htmlLower, 'enable javascript and cookies') !== false ||
-            strpos($htmlLower, 'robot check') !== false ||
-            strpos($htmlLower, 'we just need to make sure you\'re not a robot') !== false // Amazon Captcha
+            strpos($htmlLower, 'robot check') !== false
         );
     }
 
     /**
      * Sistema de peticiones rotativo y camuflado
      */
-    private static function fetchUrl($url, $host, $botLevel = 0, $useApi = false)
+    private static function fetchUrl($url, $host, $botLevel = 0, $useApi = false, $renderJs = false)
     {
         $ch = curl_init();
         
         if ($useApi && !empty(self::SCRAPER_API_KEY)) {
-            // Usando ScraperAPI con JS Rendering y Proxy Español
-            $apiUrl = 'http://api.scraperapi.com/?api_key=' . self::SCRAPER_API_KEY . '&url=' . urlencode($url) . '&render=true&country_code=es';
+            $apiUrl = 'http://api.scraperapi.com/?api_key=' . self::SCRAPER_API_KEY . '&url=' . urlencode($url) . '&country_code=es';
             
-            // Forzar Proxies Residenciales (Premium) para los sitios problemáticos
+            if ($renderJs) {
+                $apiUrl .= '&render=true';
+            }
             if (strpos($host, 'madridhifi') !== false || strpos($host, 'pccomponentes') !== false || strpos($host, 'amazon') !== false) {
                 $apiUrl .= '&premium=true';
             }
-
+            
             curl_setopt($ch, CURLOPT_URL, $apiUrl);
             curl_setopt($ch, CURLOPT_TIMEOUT, 60); 
         } else {
-            // Conexión Directa desde nuestro servidor
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_TIMEOUT, 12); 
         }
@@ -215,27 +187,13 @@ class SmartPriceScraper
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($ch, CURLOPT_ENCODING, ''); 
         curl_setopt($ch, CURLOPT_COOKIEFILE, ""); 
-        
-        // Evitar fallos de certificados SSL locales que detengan la petición
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
 
-        if (defined('CURL_HTTP_VERSION_2_0')) {
-            curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
-        }
-
         if ($botLevel === 1) {
             curl_setopt($ch, CURLOPT_USERAGENT, 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)');
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Connection: keep-alive'
-            ]);
         } elseif ($botLevel === 2) {
             curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)');
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Connection: keep-alive'
-            ]);
         } else {
             curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
@@ -253,6 +211,8 @@ class SmartPriceScraper
         $html = curl_exec($ch);
         curl_close($ch);
 
+        // Ya NO abortamos la misión por culpa de los errores 403. Devolvemos el HTML en bruto 
+        // para que las funciones de extracción hagan su magia.
         return $html;
     }
 
@@ -266,14 +226,12 @@ class SmartPriceScraper
         foreach ($schemaArray as $item) {
             if (isset($item['@type'])) {
                 $type = is_array($item['@type']) ? $item['@type'][0] : $item['@type'];
-                
                 if ($type === 'Product' && isset($item['offers'])) {
                     $offers = is_array($item['offers']) && isset($item['offers'][0]) ? $item['offers'][0] : $item['offers'];
                     if (isset($offers['price'])) {
                         return self::cleanPriceString((string)$offers['price']);
                     }
-                } 
-                elseif ($type === 'Offer' && isset($item['price'])) {
+                } elseif ($type === 'Offer' && isset($item['price'])) {
                     return self::cleanPriceString((string)$item['price']);
                 }
             }
@@ -306,7 +264,6 @@ class SmartPriceScraper
         }
 
         if (!is_numeric($cleanString)) return false;
-
         return (float) $cleanString;
     }
 }
