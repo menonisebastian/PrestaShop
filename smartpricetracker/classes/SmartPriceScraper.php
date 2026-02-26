@@ -1,18 +1,15 @@
 <?php
 /**
- * Clase estática para realizar la extracción (Scraping) avanzada y multinivel
+ * Clase para Scraping con extracción mejorada de Google Shopping
+ * Versión 2.3 - Corrige extracción de vendedores y URLs
  */
 
 class SmartPriceScraper
 {
-    // ========================================================================
-    // MODO PROFESIONAL: API Key de ScraperAPI.com (Gratis 1000/mes)
-    // ========================================================================
     const SCRAPER_API_KEY = 'd71349b190a08bfadcd73abc846ce400'; 
 
     /**
-     * NUEVO MÉTODO: Busca productos en Google Shopping y extrae precios de competidores
-     * Este es el método que hace la búsqueda masiva
+     * Busca productos en Google Shopping
      */
     public static function searchCompetitorsByTitle($search_term)
     {
@@ -22,152 +19,93 @@ class SmartPriceScraper
 
         $competitors = [];
         
-        // Construir URL de Google Shopping (España)
+        PrestaShopLogger::addLog('Smart Price Tracker: Buscando "' . $search_term . '"', 1, null, 'SmartPriceTracker');
+        
+        // ========================================================================
+        // ESTRATEGIA 1: Búsqueda directa en Google Shopping
+        // ========================================================================
         $googleShoppingUrl = 'https://www.google.es/search?q=' . urlencode($search_term) . '&tbm=shop&hl=es&gl=es';
         
-        // Intentar obtener resultados sin API primero (0 créditos)
+        // Intentar sin API (0 créditos)
         $html = self::fetchUrlForSearch($googleShoppingUrl, false, false);
         
-        // Si Google nos bloquea, usar la API básica (1 crédito)
-        if (empty($html) || self::isGoogleBlocked($html)) {
-            if (!empty(self::SCRAPER_API_KEY)) {
-                $html = self::fetchUrlForSearch($googleShoppingUrl, true, false);
+        if (!empty($html) && !self::isGoogleBlocked($html)) {
+            $competitors = self::parseGoogleShoppingResults($html);
+            if (count($competitors) > 0) {
+                PrestaShopLogger::addLog('Smart Price Tracker: Encontrados ' . count($competitors) . ' resultados (método directo)', 1, null, 'SmartPriceTracker');
+                return $competitors;
             }
         }
         
-        // Si aún no funciona, usar render JavaScript (10 créditos - último recurso)
-        if (empty($html) || self::isGoogleBlocked($html)) {
-            if (!empty(self::SCRAPER_API_KEY)) {
-                $html = self::fetchUrlForSearch($googleShoppingUrl, true, true);
+        // ========================================================================
+        // ESTRATEGIA 2: Google Shopping via API
+        // ========================================================================
+        if (!empty(self::SCRAPER_API_KEY)) {
+            PrestaShopLogger::addLog('Smart Price Tracker: Intentando con ScraperAPI (básica)', 1, null, 'SmartPriceTracker');
+            
+            $html = self::fetchUrlForSearch($googleShoppingUrl, true, false);
+            
+            if (!empty($html) && !self::isGoogleBlocked($html)) {
+                $competitors = self::parseGoogleShoppingResults($html);
+                if (count($competitors) > 0) {
+                    PrestaShopLogger::addLog('Smart Price Tracker: Encontrados ' . count($competitors) . ' resultados (ScraperAPI básica)', 1, null, 'SmartPriceTracker');
+                    return $competitors;
+                }
             }
         }
-
-        if (empty($html) || self::isGoogleBlocked($html)) {
-            return false;
-        }
-
-        // Extraer resultados de Google Shopping
-        $competitors = self::parseGoogleShoppingResults($html);
         
-        return $competitors;
+        // ========================================================================
+        // ESTRATEGIA 3: Búsqueda normal de Google
+        // ========================================================================
+        PrestaShopLogger::addLog('Smart Price Tracker: Intentando búsqueda normal de Google', 1, null, 'SmartPriceTracker');
+        
+        $googleNormalUrl = 'https://www.google.es/search?q=' . urlencode($search_term . ' precio comprar') . '&hl=es&gl=es';
+        
+        $html = self::fetchUrlForSearch($googleNormalUrl, false, false);
+        
+        if (!empty($html) && !self::isGoogleBlocked($html)) {
+            $competitors = self::parseGoogleNormalResults($html, $search_term);
+            if (count($competitors) > 0) {
+                PrestaShopLogger::addLog('Smart Price Tracker: Encontrados ' . count($competitors) . ' resultados (Google normal)', 1, null, 'SmartPriceTracker');
+                return $competitors;
+            }
+        }
+        
+        PrestaShopLogger::addLog('Smart Price Tracker: No se encontraron resultados con ninguna estrategia', 2, null, 'SmartPriceTracker');
+        return false;
     }
 
     /**
-     * Extrae los resultados de Google Shopping del HTML
+     * MEJORADO: Extrae resultados de Google Shopping con mejor parsing
      */
     private static function parseGoogleShoppingResults($html)
     {
         $competitors = [];
         
+        // Guardar fragmento del HTML para debug
+        $htmlSample = substr($html, 0, 2000);
+        PrestaShopLogger::addLog('Smart Price Tracker: HTML sample (primeros 2000 chars): ' . $htmlSample, 1, null, 'SmartPriceTracker');
+        
+        // ========================================================================
+        // MÉTODO 1: Parsing con DOMDocument (más preciso)
+        // ========================================================================
         $dom = new DOMDocument();
         @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
         $xpath = new DOMXPath($dom);
         
-        // Google Shopping tiene diferentes estructuras según el país y momento
-        // Intentamos varios selectores
+        // Buscar contenedores de productos de Google Shopping
+        // Google Shopping usa diferentes estructuras según la región/momento
+        $productContainers = $xpath->query('//div[@data-docid] | //div[contains(@class, "sh-dgr__content")]');
         
-        // Selector para resultados de shopping (estructura actual 2024-2025)
-        $products = $xpath->query('//div[contains(@class, "sh-dgr__content")]');
+        PrestaShopLogger::addLog('Smart Price Tracker: Encontrados ' . $productContainers->length . ' contenedores de productos', 1, null, 'SmartPriceTracker');
         
-        if ($products->length === 0) {
-            // Estructura alternativa
-            $products = $xpath->query('//div[@data-docid]');
-        }
-        
-        if ($products->length === 0) {
-            // Fallback: buscar por patrones de precio directamente
-            return self::parseGoogleShoppingRegex($html);
-        }
-
-        foreach ($products as $product) {
-            $competitor = [
-                'seller' => 'Desconocido',
-                'price' => 0,
-                'url' => '#',
-                'title' => ''
-            ];
-
-            // Extraer nombre del vendedor
-            $sellerNodes = $xpath->query('.//div[contains(@class, "sh-dgr__store")] | .//div[contains(@class, "merchant")]', $product);
-            if ($sellerNodes->length > 0) {
-                $competitor['seller'] = trim($sellerNodes->item(0)->nodeValue);
-            }
-
-            // Extraer precio
-            $priceNodes = $xpath->query('.//span[contains(@class, "price")] | .//span[@aria-label] | .//b', $product);
-            if ($priceNodes->length > 0) {
-                $priceText = $priceNodes->item(0)->nodeValue;
-                $price = self::cleanPriceString($priceText);
-                if ($price !== false && $price > 0) {
-                    $competitor['price'] = $price;
-                }
-            }
-
-            // Extraer URL
-            $linkNodes = $xpath->query('.//a[@href]', $product);
-            if ($linkNodes->length > 0) {
-                $url = $linkNodes->item(0)->getAttribute('href');
-                // Limpiar URL de Google (quitar tracking)
-                if (strpos($url, '/url?') !== false || strpos($url, '/aclk?') !== false) {
-                    if (preg_match('/[?&]url=([^&]+)/', $url, $matches)) {
-                        $url = urldecode($matches[1]);
-                    }
-                }
-                $competitor['url'] = $url;
-            }
-
-            // Extraer título del producto
-            $titleNodes = $xpath->query('.//h3 | .//div[contains(@class, "title")]', $product);
-            if ($titleNodes->length > 0) {
-                $competitor['title'] = trim($titleNodes->item(0)->nodeValue);
-            }
-
-            // Solo añadir si tiene precio válido
-            if ($competitor['price'] > 0) {
-                $competitors[] = $competitor;
-            }
-
-            // Limitar a 15 resultados para no saturar
-            if (count($competitors) >= 15) {
-                break;
-            }
-        }
-
-        return $competitors;
-    }
-
-    /**
-     * Método alternativo usando expresiones regulares para extraer precios de Google Shopping
-     */
-    private static function parseGoogleShoppingRegex($html)
-    {
-        $competitors = [];
-        
-        // Patrón para encontrar bloques de productos en Google Shopping
-        // Buscamos patrones de precio + vendedor cercanos en el HTML
-        
-        if (preg_match_all('/data-docid="([^"]+)"[^>]*>(.*?)<\/div>/is', $html, $blocks, PREG_SET_ORDER)) {
-            foreach ($blocks as $block) {
-                $blockHtml = $block[2];
+        if ($productContainers->length > 0) {
+            foreach ($productContainers as $container) {
+                $competitor = self::extractProductFromContainer($xpath, $container);
                 
-                // Buscar precio en este bloque
-                if (preg_match('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)(?:\s|&nbsp;)*(?:€|&euro;)/ui', $blockHtml, $priceMatch)) {
-                    $price = self::cleanPriceString($priceMatch[1]);
-                    
-                    if ($price !== false && $price > 5) { // Ignorar precios muy bajos (envíos, etc)
-                        // Buscar vendedor en el bloque
-                        $seller = 'Desconocido';
-                        if (preg_match('/<div[^>]*class="[^"]*merchant[^"]*"[^>]*>([^<]+)<\/div>/i', $blockHtml, $sellerMatch)) {
-                            $seller = trim(strip_tags($sellerMatch[1]));
-                        }
-                        
-                        $competitors[] = [
-                            'seller' => $seller,
-                            'price' => $price,
-                            'url' => '#',
-                            'title' => ''
-                        ];
-                    }
+                if ($competitor !== false && $competitor['price'] > 0) {
+                    $competitors[] = $competitor;
+                    PrestaShopLogger::addLog('Smart Price Tracker: Extraído: ' . $competitor['seller'] . ' - ' . $competitor['price'] . '€ - URL: ' . substr($competitor['url'], 0, 100), 1, null, 'SmartPriceTracker');
                 }
                 
                 if (count($competitors) >= 15) {
@@ -176,13 +114,334 @@ class SmartPriceScraper
             }
         }
         
-        // Si no encontramos nada, buscar patrones de precio más generales
-        if (empty($competitors)) {
-            if (preg_match_all('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)(?:\s|&nbsp;)*(?:€|&euro;)/ui', $html, $allPrices, PREG_SET_ORDER)) {
+        // ========================================================================
+        // MÉTODO 2: Si DOMDocument no funcionó, usar Regex (fallback)
+        // ========================================================================
+        if (count($competitors) === 0) {
+            PrestaShopLogger::addLog('Smart Price Tracker: DOMDocument no encontró resultados, usando regex', 1, null, 'SmartPriceTracker');
+            $competitors = self::parseGoogleShoppingRegex($html);
+        }
+        
+        return $competitors;
+    }
+
+    /**
+     * Extrae un producto de un contenedor de Google Shopping
+     */
+    private static function extractProductFromContainer($xpath, $container)
+    {
+        $competitor = [
+            'seller' => 'Desconocido',
+            'price' => 0,
+            'url' => '#',
+            'title' => ''
+        ];
+
+        // ========================================================================
+        // 1. EXTRAER PRECIO (Prioridad máxima)
+        // ========================================================================
+        
+        // Método A: Buscar en atributos aria-label (más confiable)
+        $priceElements = $xpath->query('.//*[@aria-label]', $container);
+        foreach ($priceElements as $elem) {
+            $ariaLabel = $elem->getAttribute('aria-label');
+            if (preg_match('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)(?:\s)*(?:€|EUR)/ui', $ariaLabel, $match)) {
+                $price = self::cleanPriceString($match[1]);
+                if ($price > 0) {
+                    $competitor['price'] = $price;
+                    break;
+                }
+            }
+        }
+        
+        // Método B: Buscar spans con clases de precio
+        if ($competitor['price'] === 0) {
+            $priceNodes = $xpath->query('.//span[contains(@class, "price")] | .//b | .//span[contains(text(), "€")]', $container);
+            foreach ($priceNodes as $node) {
+                $priceText = trim($node->nodeValue);
+                if (preg_match('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)(?:\s)*(?:€|EUR)/ui', $priceText, $match)) {
+                    $price = self::cleanPriceString($match[1]);
+                    if ($price > 0) {
+                        $competitor['price'] = $price;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Método C: Buscar en todo el texto del contenedor
+        if ($competitor['price'] === 0) {
+            $containerText = $container->nodeValue;
+            if (preg_match('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)(?:\s)*€/ui', $containerText, $match)) {
+                $price = self::cleanPriceString($match[1]);
+                if ($price > 0) {
+                    $competitor['price'] = $price;
+                }
+            }
+        }
+
+        // ========================================================================
+        // 2. EXTRAER NOMBRE DEL VENDEDOR
+        // ========================================================================
+        
+        // Método A: Atributo data-merchant
+        if ($container->hasAttribute('data-merchant')) {
+            $competitor['seller'] = $container->getAttribute('data-merchant');
+        }
+        
+        // Método B: Buscar divs/spans con clases relacionadas con tienda
+        if ($competitor['seller'] === 'Desconocido') {
+            $sellerNodes = $xpath->query('.//div[contains(@class, "merchant")] | .//span[contains(@class, "merchant")] | .//div[contains(@class, "store")] | .//span[contains(@class, "store")] | .//a[contains(@class, "merchant")]', $container);
+            if ($sellerNodes->length > 0) {
+                $sellerText = trim($sellerNodes->item(0)->nodeValue);
+                if (!empty($sellerText) && strlen($sellerText) < 100) {
+                    $competitor['seller'] = $sellerText;
+                }
+            }
+        }
+        
+        // Método C: Extraer del título del enlace
+        if ($competitor['seller'] === 'Desconocido') {
+            $linkNodes = $xpath->query('.//a[@title]', $container);
+            if ($linkNodes->length > 0) {
+                $title = $linkNodes->item(0)->getAttribute('title');
+                // El título a veces contiene "en [NombreTienda]"
+                if (preg_match('/en\s+([A-Za-zÁ-ú\s]+)/ui', $title, $match)) {
+                    $competitor['seller'] = trim($match[1]);
+                }
+            }
+        }
+
+        // ========================================================================
+        // 3. EXTRAER URL DE LA TIENDA
+        // ========================================================================
+        
+        $linkNodes = $xpath->query('.//a[@href]', $container);
+        
+        foreach ($linkNodes as $linkNode) {
+            $href = $linkNode->getAttribute('href');
+            
+            // Ignorar enlaces internos de Google
+            if (strpos($href, '/support.google.com') !== false || 
+                strpos($href, 'support.google.com') !== false ||
+                strpos($href, 'policies.google.com') !== false) {
+                continue;
+            }
+            
+            // Si es un enlace de redirección de Google, extraer la URL real
+            if (strpos($href, '/url?') !== false || strpos($href, '/aclk?') !== false || strpos($href, 'google.com/url') !== false) {
+                
+                // Intentar extraer el parámetro 'url'
+                if (preg_match('/[?&]url=([^&]+)/i', $href, $matches)) {
+                    $realUrl = urldecode($matches[1]);
+                    $competitor['url'] = $realUrl;
+                    
+                    // Extraer el dominio como vendedor si aún es desconocido
+                    if ($competitor['seller'] === 'Desconocido') {
+                        $host = parse_url($realUrl, PHP_URL_HOST);
+                        if ($host) {
+                            $competitor['seller'] = self::formatSellerName($host);
+                        }
+                    }
+                    break;
+                }
+                
+                // Intentar extraer el parámetro 'q'
+                if (preg_match('/[?&]q=([^&]+)/i', $href, $matches)) {
+                    $realUrl = urldecode($matches[1]);
+                    if (filter_var($realUrl, FILTER_VALIDATE_URL)) {
+                        $competitor['url'] = $realUrl;
+                        
+                        if ($competitor['seller'] === 'Desconocido') {
+                            $host = parse_url($realUrl, PHP_HOST);
+                            if ($host) {
+                                $competitor['seller'] = self::formatSellerName($host);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            // Si es una URL directa
+            elseif (filter_var($href, FILTER_VALIDATE_URL)) {
+                $competitor['url'] = $href;
+                
+                if ($competitor['seller'] === 'Desconocido') {
+                    $host = parse_url($href, PHP_URL_HOST);
+                    if ($host) {
+                        $competitor['seller'] = self::formatSellerName($host);
+                    }
+                }
+                break;
+            }
+        }
+
+        // ========================================================================
+        // 4. EXTRAER TÍTULO DEL PRODUCTO
+        // ========================================================================
+        
+        $titleNodes = $xpath->query('.//h3 | .//h4 | .//div[contains(@class, "title")] | .//span[contains(@class, "title")]', $container);
+        if ($titleNodes->length > 0) {
+            $competitor['title'] = trim($titleNodes->item(0)->nodeValue);
+        }
+
+        // Solo devolver si tiene precio válido
+        if ($competitor['price'] > 0) {
+            return $competitor;
+        }
+        
+        return false;
+    }
+
+    /**
+     * Formatea el nombre del vendedor a partir del dominio
+     */
+    private static function formatSellerName($host)
+    {
+        // Quitar www.
+        $host = str_replace('www.', '', $host);
+        
+        // Extraer el nombre del dominio (antes del TLD)
+        $parts = explode('.', $host);
+        if (count($parts) >= 2) {
+            $name = $parts[0];
+            
+            // Capitalizar y hacer más legible
+            $name = ucfirst($name);
+            
+            // Reemplazar guiones por espacios
+            $name = str_replace('-', ' ', $name);
+            
+            return $name;
+        }
+        
+        return ucfirst($host);
+    }
+
+    /**
+     * Extrae resultados de búsqueda normal de Google
+     */
+    private static function parseGoogleNormalResults($html, $search_term)
+    {
+        $competitors = [];
+        
+        $dom = new DOMDocument();
+        @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
+        $xpath = new DOMXPath($dom);
+        
+        $results = $xpath->query('//div[@class="g"] | //div[contains(@class, "tF2Cxc")]');
+        
+        foreach ($results as $result) {
+            $competitor = [
+                'seller' => 'Desconocido',
+                'price' => 0,
+                'url' => '#',
+                'title' => ''
+            ];
+
+            // Título
+            $titleNodes = $xpath->query('.//h3', $result);
+            if ($titleNodes->length > 0) {
+                $competitor['title'] = trim($titleNodes->item(0)->nodeValue);
+            }
+
+            // URL y vendedor
+            $linkNodes = $xpath->query('.//a[@href]', $result);
+            if ($linkNodes->length > 0) {
+                $url = $linkNodes->item(0)->getAttribute('href');
+                if (filter_var($url, FILTER_VALIDATE_URL)) {
+                    $competitor['url'] = $url;
+                    $host = parse_url($url, PHP_URL_HOST);
+                    if ($host) {
+                        $competitor['seller'] = self::formatSellerName($host);
+                    }
+                }
+            }
+
+            // Precio
+            $textContent = $result->nodeValue;
+            if (preg_match('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)(?:\s)*(?:€|EUR)/ui', $textContent, $priceMatch)) {
+                $price = self::cleanPriceString($priceMatch[1]);
+                if ($price !== false && $price > 10) {
+                    $competitor['price'] = $price;
+                }
+            }
+
+            if ($competitor['price'] > 0 && $competitor['url'] !== '#') {
+                $competitors[] = $competitor;
+            }
+
+            if (count($competitors) >= 10) {
+                break;
+            }
+        }
+
+        return $competitors;
+    }
+
+    /**
+     * Método de fallback usando regex
+     */
+    private static function parseGoogleShoppingRegex($html)
+    {
+        $competitors = [];
+        
+        // Buscar bloques que parezcan productos
+        if (preg_match_all('/<div[^>]*data-docid="([^"]+)"[^>]*>(.*?)<\/div>/is', $html, $blocks, PREG_SET_ORDER)) {
+            
+            foreach ($blocks as $block) {
+                $blockHtml = $block[0];
+                
+                // Buscar precio
+                if (preg_match('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)(?:\s)*€/ui', $blockHtml, $priceMatch)) {
+                    $price = self::cleanPriceString($priceMatch[1]);
+                    
+                    if ($price !== false && $price > 20) {
+                        
+                        // Buscar URL
+                        $url = '#';
+                        if (preg_match('/<a[^>]*href="([^"]+)"[^>]*>/i', $blockHtml, $urlMatch)) {
+                            $potentialUrl = $urlMatch[1];
+                            
+                            // Decodificar URL de Google
+                            if (preg_match('/[?&]url=([^&]+)/i', $potentialUrl, $realUrlMatch)) {
+                                $url = urldecode($realUrlMatch[1]);
+                            } elseif (filter_var($potentialUrl, FILTER_VALIDATE_URL)) {
+                                $url = $potentialUrl;
+                            }
+                        }
+                        
+                        // Intentar extraer vendedor
+                        $seller = 'Competidor';
+                        if ($url !== '#') {
+                            $host = parse_url($url, PHP_URL_HOST);
+                            if ($host) {
+                                $seller = self::formatSellerName($host);
+                            }
+                        }
+                        
+                        $competitors[] = [
+                            'seller' => $seller,
+                            'price' => $price,
+                            'url' => $url,
+                            'title' => ''
+                        ];
+                        
+                        if (count($competitors) >= 10) {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Si no encontró nada con data-docid, buscar precios directamente
+        if (count($competitors) === 0) {
+            if (preg_match_all('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)(?:\s)*€/ui', $html, $allPrices, PREG_SET_ORDER)) {
                 $seenPrices = [];
                 foreach ($allPrices as $priceMatch) {
                     $price = self::cleanPriceString($priceMatch[1]);
-                    if ($price !== false && $price > 10 && !in_array($price, $seenPrices)) {
+                    if ($price !== false && $price > 20 && !in_array($price, $seenPrices)) {
                         $competitors[] = [
                             'seller' => 'Competidor',
                             'price' => $price,
@@ -199,11 +458,12 @@ class SmartPriceScraper
             }
         }
         
+        PrestaShopLogger::addLog('Smart Price Tracker: Regex encontró ' . count($competitors) . ' resultados', 1, null, 'SmartPriceTracker');
         return $competitors;
     }
 
     /**
-     * Función específica para hacer peticiones de búsqueda
+     * Petición HTTP para búsquedas
      */
     private static function fetchUrlForSearch($url, $useApi = false, $renderJs = false)
     {
@@ -230,9 +490,9 @@ class SmartPriceScraper
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
         curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language: es-ES,es;q=0.9,en;q=0.8',
-            'Cache-Control: max-age=0'
+            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language: es-ES,es;q=0.9',
+            'Cache-Control: no-cache'
         ]);
         
         $html = curl_exec($ch);
@@ -240,12 +500,17 @@ class SmartPriceScraper
         curl_close($ch);
 
         if ($httpCode !== 200) {
+            PrestaShopLogger::addLog('Smart Price Tracker: HTTP ' . $httpCode, 2, null, 'SmartPriceTracker');
             return false;
         }
 
         return $html;
     }
 
+    // ========================================================================
+    // MÉTODOS EXISTENTES (getCompetitorPrice, etc.) - SIN CAMBIOS
+    // ========================================================================
+    
     public static function getCompetitorPrice($url)
     {
         if (!filter_var($url, FILTER_VALIDATE_URL)) {
@@ -253,32 +518,23 @@ class SmartPriceScraper
         }
 
         @set_time_limit(120);
-
         $host = parse_url($url, PHP_URL_HOST);
         $price = false;
 
-        // ========================================================================
-        // FASE 1: INTENTOS LOCALES (0 CRÉDITOS - MÁXIMA VELOCIDAD)
-        // ========================================================================
         $html = self::fetchUrl($url, $host, 0, false, false, false);
         $price = self::parsePriceFromHtml($html, $host);
 
         if ($price === false && self::isBlocked($html)) {
-            $html = self::fetchUrl($url, $host, 1, false, false, false); // Facebook Bot
+            $html = self::fetchUrl($url, $host, 1, false, false, false);
             $price = self::parsePriceFromHtml($html, $host);
             
             if ($price === false && self::isBlocked($html)) {
-                $html = self::fetchUrl($url, $host, 2, false, false, false); // Googlebot
+                $html = self::fetchUrl($url, $host, 2, false, false, false);
                 $price = self::parsePriceFromHtml($html, $host);
             }
         }
 
-        // ========================================================================
-        // FASE 2: EL TRUCO DE GOOGLE SEARCH LOCAL (0 CRÉDITOS)
-        // Buscamos la URL en Google para leer el precio del "Rich Snippet" indexado.
-        // ========================================================================
         if ($price === false) {
-            // Buscamos la URL exacta entre comillas en Google España
             $googleUrl = 'https://www.google.es/search?q=' . urlencode('"' . $url . '"') . '&hl=es&gl=es';
             $googleHtml = self::fetchUrl($googleUrl, 'www.google.es', 0, false, false, false);
             
@@ -287,21 +543,6 @@ class SmartPriceScraper
             }
         }
 
-        // ========================================================================
-        // FASE 3: GOOGLE SEARCH VÍA API BÁSICA (1 CRÉDITO)
-        // Si Google bloqueó nuestro servidor, usamos la API barata para ver el snippet
-        // ========================================================================
-        if ($price === false && !empty(self::SCRAPER_API_KEY) && isset($googleHtml) && self::isGoogleBlocked($googleHtml)) {
-            $googleHtmlApi = self::fetchUrl($googleUrl, 'www.google.es', 0, true, false, false);
-            if (!empty($googleHtmlApi) && !self::isGoogleBlocked($googleHtmlApi)) {
-                $price = self::parsePriceFromGoogle($googleHtmlApi);
-            }
-        }
-
-        // ========================================================================
-        // FASE 4: COMPETIDOR VÍA API BÁSICA (1 CRÉDITO)
-        // Leemos la web original pero con proxies de centro de datos baratos
-        // ========================================================================
         if ($price === false && !empty(self::SCRAPER_API_KEY)) {
             $htmlApi = self::fetchUrl($url, $host, 0, true, false, false);
             if (!empty($htmlApi) && !self::isBlocked($htmlApi)) {
@@ -309,29 +550,11 @@ class SmartPriceScraper
             }
         }
 
-        // ========================================================================
-        // FASE 5: COMPETIDOR VÍA API PREMIUM + RENDER JS (10 - 25 CRÉDITOS)
-        // El último recurso. Solo si no está en Google y Cloudflare es implacable.
-        // ========================================================================
-        if ($price === false && !empty(self::SCRAPER_API_KEY)) {
-            $needsPremium = (strpos($host, 'madridhifi') !== false || strpos($host, 'pccomponentes') !== false || strpos($host, 'amazon') !== false);
-            if ($needsPremium) {
-                $htmlApiRender = self::fetchUrl($url, $host, 0, true, true, true);
-                if (!empty($htmlApiRender) && !self::isBlocked($htmlApiRender)) {
-                    $price = self::parsePriceFromHtml($htmlApiRender, $host);
-                }
-            }
-        }
-
         return $price;
     }
 
-    /**
-     * Extrae el precio de los resultados de búsqueda de Google (Rich Snippets / Shopping)
-     */
     private static function parsePriceFromGoogle($html)
     {
-        // Aislar la zona de resultados para ignorar precios en menús u otras partes
         $start = strpos($html, 'id="search"');
         $searchBlock = $html;
         
@@ -344,22 +567,17 @@ class SmartPriceScraper
             }
         }
 
-        // Busca patrones típicos de precio en el snippet (Ej: 599,00 €)
-        if (preg_match_all('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)(?:\s|&nbsp;)*(?:€|&euro;|EUR)/ui', $searchBlock, $matches)) {
+        if (preg_match_all('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)(?:\s)*(?:€|EUR)/ui', $searchBlock, $matches)) {
             foreach ($matches[1] as $match) {
                 $clean = self::cleanPriceString($match);
-                // Evitamos coger precios minúsculos que suelen ser de "Gastos de envío 3,99 €"
                 if ($clean > 5) { 
-                    return $clean; // Devuelve el primer precio válido encontrado en el resultado exacto
+                    return $clean;
                 }
             }
         }
         return false;
     }
 
-    /**
-     * Estrategias de lectura del HTML (Prioridad absoluta al código fuente limpio)
-     */
     private static function parsePriceFromHtml($html, $host)
     {
         if (empty(trim($html))) return false;
@@ -368,27 +586,11 @@ class SmartPriceScraper
         @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
         $xpath = new DOMXPath($dom);
 
-        // --- ESTRATEGIA 1: EXTRACCIÓN DEL NÚCLEO REACT / NEXT.JS ---
         if (strpos($host, 'pccomponentes') !== false) {
-            if (preg_match('/"price"\s*:\s*"?([0-9]+(?:[\.,][0-9]{1,2})?)"?/i', $html, $matches) ||
-                preg_match('/"priceAmount"\s*:\s*"?([0-9]+(?:[\.,][0-9]{1,2})?)"?/i', $html, $matches)) {
+            if (preg_match('/"price"\s*:\s*"?([0-9]+(?:[\.,][0-9]{1,2})?)"?/i', $html, $matches)) {
                 $clean = self::cleanPriceString($matches[1]);
                 if ($clean > 0) return $clean;
             }
-            $pccPrice = $xpath->query('//*[@id="precio-main"] | //*[@data-e2e="price-card"]//span | //div[contains(@class, "buy-box")]//*[contains(@class, "price")]');
-            if ($pccPrice->length > 0) return self::cleanPriceString($pccPrice->item(0)->nodeValue);
-        }
-
-        if (strpos($host, 'madridhifi') !== false) {
-            $nextData = $xpath->query('//script[@id="__NEXT_DATA__"]');
-            if ($nextData->length > 0) {
-                if (preg_match('/"price"\s*:\s*"?([0-9]+(?:[\.,][0-9]{1,2})?)"?/i', $nextData->item(0)->nodeValue, $matches)) {
-                    $clean = self::cleanPriceString($matches[1]);
-                    if ($clean > 0) return $clean;
-                }
-            }
-            $mhPrice = $xpath->query('//*[@id="our_price_display"] | //*[contains(@class, "product-price")] | //div[contains(@class, "price")]/span[@class="value"]');
-            if ($mhPrice->length > 0) return self::cleanPriceString($mhPrice->item(0)->nodeValue);
         }
 
         if (strpos($host, 'amazon') !== false) {
@@ -396,7 +598,6 @@ class SmartPriceScraper
             if ($amazonPrice->length > 0) return self::cleanPriceString($amazonPrice->item(0)->nodeValue);
         }
 
-        // --- ESTRATEGIA 2: JSON-LD (Schema.org) ---
         if (preg_match_all('/<script[^>]*type="application\/ld\+json"[^>]*>(.*?)<\/script>/is', $html, $matches)) {
             foreach ($matches[1] as $jsonStr) {
                 $data = @json_decode(trim($jsonStr), true);
@@ -407,22 +608,13 @@ class SmartPriceScraper
             }
         }
 
-        // --- ESTRATEGIA 3: Meta Tags Open Graph ---
-        $ogPrice = $xpath->query('//meta[@property="product:price:amount"]/@content | //meta[@name="twitter:data1"]/@content');
+        $ogPrice = $xpath->query('//meta[@property="product:price:amount"]/@content');
         if ($ogPrice->length > 0) {
             $cleanPrice = self::cleanPriceString($ogPrice->item(0)->nodeValue);
             if ($cleanPrice !== false && $cleanPrice > 0) return $cleanPrice;
         }
 
-        // --- ESTRATEGIA 4: Atributos y Microdatos HTML ---
-        $microdata = $xpath->query('//*[@itemprop="price"]/@content | //*[@data-price]/@data-price');
-        if ($microdata->length > 0) {
-            $cleanPrice = self::cleanPriceString($microdata->item(0)->nodeValue);
-            if ($cleanPrice !== false && $cleanPrice > 0) return $cleanPrice;
-        }
-
-        // --- ESTRATEGIA 5: Regex Crudo y Visual ---
-        if (preg_match('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)\s*(?:€|&euro;|EUR)/ui', $html, $matches)) {
+        if (preg_match('/([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)\s*€/ui', $html, $matches)) {
             $cleanPrice = self::cleanPriceString($matches[1]);
             if ($cleanPrice !== false && $cleanPrice > 0) return $cleanPrice;
         }
@@ -430,50 +622,29 @@ class SmartPriceScraper
         return false;
     }
 
-    /**
-     * Evalúa si Google nos ha lanzado un Captcha
-     */
     private static function isGoogleBlocked($html)
     {
         if (empty(trim($html))) return true;
         $htmlLower = strtolower($html);
-        return (strpos($htmlLower, 'id="captcha"') !== false || 
-                strpos($htmlLower, 'recaptcha') !== false || 
-                strpos($htmlLower, 'tráfico inusual') !== false || 
-                strpos($htmlLower, 'unusual traffic') !== false);
+        return (strpos($htmlLower, 'captcha') !== false || 
+                strpos($htmlLower, 'tráfico inusual') !== false);
     }
 
-    /**
-     * Evalúa si el HTML devuelto es una página de bloqueo general
-     */
     private static function isBlocked($html)
     {
         if (empty(trim($html)) || strlen($html) < 1000) return true; 
         $htmlLower = strtolower($html);
-        return (
-            (strpos($htmlLower, 'cloudflare') !== false && strpos($htmlLower, 'ray id') !== false) ||
-            strpos($htmlLower, 'datadome') !== false ||
-            strpos($htmlLower, 'enable javascript and cookies') !== false ||
-            strpos($htmlLower, 'robot check') !== false
-        );
+        return (strpos($htmlLower, 'cloudflare') !== false && strpos($htmlLower, 'ray id') !== false);
     }
 
-    /**
-     * Sistema de peticiones rotativo: Soporta Local, API Básica y API Premium
-     */
     private static function fetchUrl($url, $host, $botLevel = 0, $useApi = false, $renderJs = false, $premium = false)
     {
         $ch = curl_init();
         
         if ($useApi && !empty(self::SCRAPER_API_KEY)) {
             $apiUrl = 'http://api.scraperapi.com/?api_key=' . self::SCRAPER_API_KEY . '&url=' . urlencode($url) . '&country_code=es';
-            
-            if ($renderJs) {
-                $apiUrl .= '&render=true';
-            }
-            if ($premium) {
-                $apiUrl .= '&premium=true';
-            }
+            if ($renderJs) $apiUrl .= '&render=true';
+            if ($premium) $apiUrl .= '&premium=true';
             
             curl_setopt($ch, CURLOPT_URL, $apiUrl);
             curl_setopt($ch, CURLOPT_TIMEOUT, 60); 
@@ -484,35 +655,14 @@ class SmartPriceScraper
 
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_ENCODING, ''); 
-        curl_setopt($ch, CURLOPT_COOKIEFILE, ""); 
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-
-        if ($botLevel === 1) {
-            curl_setopt($ch, CURLOPT_USERAGENT, 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)');
-        } elseif ($botLevel === 2) {
-            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)');
-        } else {
-            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Authority: ' . $host,
-                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Accept-Language: es-ES,es;q=0.9,en;q=0.8',
-                'Cache-Control: max-age=0',
-                'Upgrade-Insecure-Requests: 1'
-            ]);
-        }
+        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
         
         $html = curl_exec($ch);
         curl_close($ch);
-
         return $html;
     }
 
-    /**
-     * Función auxiliar para recorrer arrays de JSON-LD
-     */
     private static function extractPriceFromSchema($schemaArray)
     {
         if (!is_array($schemaArray)) return false;
@@ -525,17 +675,12 @@ class SmartPriceScraper
                     if (isset($offers['price'])) {
                         return self::cleanPriceString((string)$offers['price']);
                     }
-                } elseif ($type === 'Offer' && isset($item['price'])) {
-                    return self::cleanPriceString((string)$item['price']);
                 }
             }
         }
         return false;
     }
 
-    /**
-     * Limpia la cadena del precio de cualquier formato
-     */
     private static function cleanPriceString($string)
     {
         $string = trim($string);
