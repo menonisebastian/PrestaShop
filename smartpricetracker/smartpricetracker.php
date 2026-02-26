@@ -17,7 +17,7 @@ class SmartPriceTracker extends Module
         $this->name = 'smartpricetracker';
         $this->tab = 'administration';
         $this->version = '2.1.1';
-        $this->author = 'Tu Nombre/Agencia';
+        $this->author = 'Sysprovider';
         $this->need_instance = 0;
         $this->bootstrap = true;
 
