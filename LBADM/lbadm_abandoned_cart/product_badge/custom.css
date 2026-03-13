@@ -1,0 +1,75 @@
+/*
+ * Custom code goes here.
+ * A template should always ship with an empty custom.css
+ */
+ #payment-option-1-container,
+ #payment-option-2-container {
+     display: none !important;
+ }
+ 
+ /* CSS de alerta de envio gratis */
+ .free-shipping-notice {
+   background-color: #fff8e1;
+   border: 1px solid #f5c518;
+   border-left: 4px solid #f5c518;
+   color: #555;
+   padding: 10px 14px;
+   margin: 10px 0;
+   border-radius: 4px;
+   font-size: 0.95rem;
+   text-align: center;
+ }
+ 
+ .free-shipping-achieved {
+   background-color: #e8f5e9;
+   border-color: #4caf50;
+   border-left-color: #4caf50;
+   color: #2e7d32;
+ }
+ 
+ /* ── Etiquetas de estado LBADM — colores base ── */
+ .lbadm-badge {
+   font-size: 0.78rem;
+   font-weight: 600;
+   padding: 4px 10px;
+   border-radius: 4px;
+   color: #fff !important;
+   letter-spacing: 0.3px;
+ }
+ 
+ .lbadm-stock-rapido { background-color: #27ae60 !important; }
+ .lbadm-stock        { background-color: #82c91e !important; }
+ .lbadm-pedido       { background-color: #3498db !important; }
+ .lbadm-personalizado{ background-color: #9b59b6 !important; }
+ .lbadm-ultimas      { background-color: #e67e22 !important; }
+ .lbadm-agotado      { background-color: #e74c3c !important; }
+ 
+ /* ── Etiquetas LBADM en miniatura (listado/categorías) ── */
+/* ── Wrapper que da el contexto de posición ── */
+.lbadm-img-wrapper {
+  position: relative;
+  display: block;
+  line-height: 0;
+}
+
+/* ── Badge anclado al wrapper de la imagen ── */
+.lbadm-img-wrapper .lbadm-overlay {
+  position: absolute !important;
+  bottom: auto !important;
+  left: auto !important;
+  top: 150px !important;
+  right: 10px !important;
+  z-index: 10 !important;
+  display: inline-block !important;
+  line-height: normal;
+}
+
+ /* ── Etiquetas LBADM en ficha del producto ── */
+ #product .product-flags li.lbadm-badge {
+   display: inline-block !important;
+   position: relative !important;
+   top: 390px !important;
+   left: auto !important;
+   margin-top: 6px !important;
+   width: auto !important;
+ }
