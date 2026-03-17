@@ -1,10 +1,12 @@
 /* FIX DEL HOVER MENU*/
-/* 1. Quitamos el margen por defecto para que al hacer scroll quede pegado */
-#navigation > li > ul {
-    margin-top: 0 !important;
-}
+@media (min-width: 992px) {
+    /* 1. Quitamos el margen por defecto para que al hacer scroll quede pegado */
+    #navigation > li > ul {
+        margin-top: 0 !important;
+    }
 
-/* 2. Subimos la caja blanca SOLO cuando la web está arriba del todo */
-.default_position #navigation > li > ul {
-    margin-top: -18px !important; /* Ajusta este -18 si necesitas subirlo más o menos */
+    /* 2. Subimos la caja blanca SOLO cuando la web está arriba del todo */
+    .default_position #navigation > li > ul {
+        margin-top: -18px !important; /* Ajusta este valor si es necesario */
+    }
 }
