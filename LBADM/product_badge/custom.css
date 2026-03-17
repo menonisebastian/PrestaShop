@@ -26,6 +26,13 @@
    border-left-color: #4caf50;
    color: #2e7d32;
  }
+
+ /* Mini-cart: versión compacta del mismo aviso */
+.free-shipping-notice.lbadm-minicart-shipping {
+  font-size: 0.82rem;
+  padding: 7px 10px;
+  margin: 6px 8px;
+}
  
  /* ── Etiquetas de estado LBADM — colores base ── */
  .lbadm-badge {
