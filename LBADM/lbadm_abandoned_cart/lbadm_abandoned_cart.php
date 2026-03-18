@@ -19,8 +19,8 @@ if (php_sapi_name() !== 'cli' && $token !== $validToken) {
 // Configuración
 $horasMin = 24;
 $horasMax = 25;
-$idShop   = (int)Configuration::get('PS_SHOP_DEFAULT');
-$shopUrl  = Context::getContext()->link->getBaseLink($idShop);
+$idShop = (int) Configuration::get('PS_SHOP_DEFAULT');
+$shopUrl = Context::getContext()->link->getBaseLink($idShop);
 
 // Buscar carritos abandonados en la ventana de 24-25 horas
 $sql = '
@@ -53,7 +53,7 @@ foreach ($carts as $cart) {
     // Comprobar que no se le ha enviado ya el email
     $yaEnviado = Db::getInstance()->getValue('
         SELECT COUNT(*) FROM `' . _DB_PREFIX_ . 'lbadm_cart_reminder`
-        WHERE id_cart = ' . (int)$cart['id_cart']
+        WHERE id_cart = ' . (int) $cart['id_cart']
     );
 
     if ($yaEnviado) {
@@ -61,7 +61,7 @@ foreach ($carts as $cart) {
     }
 
     // Obtener productos del carrito
-    $cartObj   = new Cart((int)$cart['id_cart']);
+    $cartObj = new Cart((int) $cart['id_cart']);
     $productos = $cartObj->getProducts();
 
     if (empty($productos)) {
@@ -71,22 +71,22 @@ foreach ($carts as $cart) {
     // Construir lista de productos para el email
     $listaProductos = '';
     foreach ($productos as $prod) {
-        $listaProductos .= '- ' . $prod['name'] . ' x' . (int)$prod['quantity'] 
-                         . ' — ' . Tools::displayPrice($prod['total_wt']) . "\n";
+        $listaProductos .= '- ' . $prod['name'] . ' x' . (int) $prod['quantity']
+            . ' — ' . Tools::displayPrice($prod['total_wt']) . "\n";
     }
 
     // Enviar email
     $templateVars = [
-        '{firstname}'   => $cart['firstname'],
-        '{lastname}'    => $cart['lastname'],
-        '{cart_url}'    => $shopUrl . 'carrito?action=show',
-        '{shop_name}'   => Configuration::get('PS_SHOP_NAME'),
-        '{products}'    => $listaProductos,
-        '{shop_url}'    => $shopUrl,
+        '{firstname}' => $cart['firstname'],
+        '{lastname}' => $cart['lastname'],
+        '{cart_url}' => $shopUrl . 'carrito?action=show',
+        '{shop_name}' => Configuration::get('PS_SHOP_NAME'),
+        '{products}' => $listaProductos,
+        '{shop_url}' => $shopUrl,
     ];
 
     $enviado = Mail::Send(
-        (int)Configuration::get('PS_LANG_DEFAULT'),
+        (int) Configuration::get('PS_LANG_DEFAULT'),
         'lbadm_abandoned_cart',
         'Olvidaste algo en tu carrito 🛒',
         $templateVars,
@@ -102,22 +102,22 @@ foreach ($carts as $cart) {
     if ($enviado) {
         // Registrar envío para no repetirlo
         Db::getInstance()->insert('lbadm_cart_reminder', [
-            'id_cart'    => (int)$cart['id_cart'],
-            'id_customer'=> (int)$cart['id_customer'],
-            'email'      => pSQL($cart['email']),
-            'date_sent'  => date('Y-m-d H:i:s'),
+            'id_cart' => (int) $cart['id_cart'],
+            'id_customer' => (int) $cart['id_customer'],
+            'email' => pSQL($cart['email']),
+            'date_sent' => date('Y-m-d H:i:s'),
         ]);
         echo date('Y-m-d H:i:s') . " - Email enviado a: " . $cart['email'] . "\n";
     }
 }
 
 echo date('Y-m-d H:i:s') . " - Proceso completado.\n";
-```
+// ```
 
----
+// ---
 
-## Archivo 2 — Template del email (HTML)
+// ## Archivo 2 — Template del email (HTML)
 
-Crear en:
-```
-/modules/lbadm_abandoned_cart/mails/es/lbadm_abandoned_cart.html
+// Crear en:
+// ```
+// /modules/lbadm_abandoned_cart/mails/es/lbadm_abandoned_cart.html
