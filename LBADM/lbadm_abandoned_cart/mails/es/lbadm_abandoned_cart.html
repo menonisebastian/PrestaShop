@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Olvidaste algo en tu carrito 🛒</title>
 </head>
+
 <body style="margin:0; padding:0; background-color:#fdf6f0; font-family: Georgia, 'Times New Roman', serif;">
 
   <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fdf6f0;">
@@ -12,23 +14,15 @@
       <td align="center" style="padding: 32px 16px;">
 
         <!-- Contenedor principal -->
-        <table width="600" cellpadding="0" cellspacing="0" border="0"
-               style="max-width:600px; width:100%; background-color:#ffffff;
+        <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%; background-color:#ffffff;
                       border-radius:12px; overflow:hidden;
                       box-shadow: 0 2px 12px rgba(0,0,0,0.07);">
 
           <!-- ── CABECERA con color salmón ── -->
           <tr>
-            <td align="center"
-                style="background-color:#e8927c; padding: 28px 32px;">
+            <td align="center" style="background-color:#e8927c; padding: 28px 32px;">
 
-              <!-- Logo: apunta a la imagen del tema. Ajustar la ruta si es diferente -->
-              <img
-                src="https://losbuenosairesdemadrid.com/img/los-buenos-aires-de-madrid-logo-1588079715.jpg"
-                alt="LBADM Kids — Los buenos aires de Madrid"
-                width="160"
-                style="display:block; margin:0 auto 12px; max-width:160px;"
-              >
+              <img src="{shop_logo}" alt="{shop_name}" style="max-width: 200px; height: auto;" />
 
               <p style="margin:0; font-family: Arial, sans-serif;
                          font-size:12px; color:#fff3ee; letter-spacing:2px;
@@ -54,8 +48,7 @@
               </p>
 
               <!-- Separador decorativo -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                     style="margin-bottom:24px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
                 <tr>
                   <td style="border-top: 2px solid #f5d9c8;"></td>
                 </tr>
@@ -69,8 +62,7 @@
               </p>
 
               <!-- Productos -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                     style="background-color:#fdf6f0; border-radius:8px;
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fdf6f0; border-radius:8px;
                              padding:16px; margin-bottom:28px;">
                 <tr>
                   <td style="padding:16px;">
@@ -81,13 +73,13 @@
                 </tr>
               </table>
 
+              {shipping_notice}
+
               <!-- CTA -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                     style="margin-bottom:32px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:32px;">
                 <tr>
                   <td align="center">
-                    <a href="{cart_url}"
-                       style="display:inline-block; background-color:#f0b429;
+                    <a href="{cart_url}" style="display:inline-block; background-color:#f0b429;
                               color:#ffffff; font-family: Arial, sans-serif;
                               font-size:16px; font-weight:bold;
                               padding:16px 40px; border-radius:50px;
@@ -99,8 +91,7 @@
               </table>
 
               <!-- Separador -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                     style="margin-bottom:20px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
                 <tr>
                   <td style="border-top: 1px solid #f0e0d6;"></td>
                 </tr>
@@ -118,16 +109,14 @@
 
           <!-- ── PIE ── -->
           <tr>
-            <td align="center"
-                style="background-color:#3d2c27; padding:20px 32px;">
+            <td align="center" style="background-color:#3d2c27; padding:20px 32px;">
               <p style="margin:0 0 6px; font-family: Arial, sans-serif;
                          font-size:13px; color:#d4a898; font-weight:bold;">
                 {shop_name}
               </p>
               <p style="margin:0; font-family: Arial, sans-serif;
                          font-size:12px;">
-                <a href="{shop_url}"
-                   style="color:#f0b429; text-decoration:none;">
+                <a href="{shop_url}" style="color:#f0b429; text-decoration:none;">
                   {shop_url}
                 </a>
               </p>
@@ -149,4 +138,5 @@
   </table>
 
 </body>
+
 </html>

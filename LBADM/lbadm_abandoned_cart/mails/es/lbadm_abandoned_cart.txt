@@ -5,6 +5,8 @@ Te dejaste algo en el carrito. ¿Te ayudamos a terminarlo?
 Tu carrito:
 {products}
 
+{shipping_notice}
+
 Vuelve a tu carrito aquí:
 {cart_url}
 
