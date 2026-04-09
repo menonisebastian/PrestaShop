@@ -1,0 +1,13 @@
+Hola {firstname},
+
+Te dejaste algo en el carrito. ¿Te ayudamos a terminarlo?
+
+Tu carrito:
+{products}
+
+Vuelve a tu carrito aquí:
+{cart_url}
+
+Un saludo,
+{shop_name}
+{shop_url}

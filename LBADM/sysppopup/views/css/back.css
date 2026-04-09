@@ -1,0 +1,162 @@
+/**
+ * SYSPROVIDER Popup - Backoffice Styles
+ *
+ * @author    SYSPROVIDER S.L.
+ * @copyright 2024 SYSPROVIDER S.L.
+ */
+
+/* Panel de configuración */
+.panel-heading {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+}
+
+/* Preview de imagen */
+#image-preview-container {
+    margin-top: 15px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+}
+
+#image-preview-container img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+#image-preview-label {
+    font-weight: 600;
+    margin-bottom: 10px;
+    display: block;
+    color: #495057;
+}
+
+/* Sección de ayuda */
+.sysp-help-section {
+    background-color: #e7f3ff;
+    border-left: 4px solid #2196F3;
+    padding: 15px;
+    margin: 20px 0;
+    border-radius: 4px;
+}
+
+.sysp-help-section h4 {
+    margin-top: 0;
+    color: #1976D2;
+}
+
+.sysp-help-section ul {
+    margin-bottom: 0;
+}
+
+/* Estilos para los campos de formulario */
+.form-group {
+    margin-bottom: 20px;
+}
+
+/* Alertas de información */
+.alert-info {
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+    color: #0c5460;
+}
+
+/* Botón de guardar personalizado */
+.btn-default {
+    background-color: #667eea;
+    border-color: #667eea;
+    color: #fff;
+}
+
+.btn-default:hover {
+    background-color: #764ba2;
+    border-color: #764ba2;
+    color: #fff;
+}
+
+/* Select mejorado */
+select.form-control {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px;
+}
+
+/* Inputs de número */
+input[type="number"].form-control {
+    max-width: 150px;
+}
+
+/* Toggle switches mejorados */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+/* Separador visual */
+.form-wrapper hr {
+    margin: 30px 0;
+    border-top: 2px solid #e9ecef;
+}
+
+/* Footer del módulo */
+.module-footer {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.module-footer p {
+    margin: 0;
+    color: #6c757d;
+    font-size: 13px;
+}
+
+/* Lista de imágenes disponibles */
+.available-images-list {
+    margin-top: 15px;
+    padding: 15px;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.available-images-list .image-item {
+    padding: 8px;
+    margin: 5px 0;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.available-images-list .image-item:hover {
+    background-color: #e9ecef;
+}
+
+.available-images-list .image-name {
+    font-size: 13px;
+    color: #495057;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .panel {
+        margin: 10px;
+    }
+    
+    #image-preview-container {
+        padding: 10px;
+    }
+}
