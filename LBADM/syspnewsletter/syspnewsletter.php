@@ -403,109 +403,128 @@ class SyspNewsletter extends Module
         return $this->displayConfirmation($this->l('Configuración guardada correctamente'));
     }
 
-    // ── AJAX: suscripción + descuento ───────────────────────────────────────
+    // ── AJAX: métodos públicos llamados desde el FrontController ───────────
 
     /**
-     * Endpoint AJAX llamado desde el front.
-     * URL: /module/syspnewsletter/subscribe
+     * Comprueba si el email ya está en la tabla de suscriptores.
      */
-    public function displayAjax()
-    {
-        header('Content-Type: application/json');
-
-        $email = Tools::getValue('email');
-        if (!Validate::isEmail($email)) {
-            die(json_encode(['success' => false, 'error' => 'Email inválido']));
-        }
-
-        $idShop    = (int) $this->context->shop->id;
-        $idLang    = (int) $this->context->language->id;
-        $alreadySub = $this->isAlreadySubscribed($email, $idShop);
-
-        if (!$alreadySub) {
-            $this->saveSubscriber($email, $idShop);
-        }
-
-        $response = ['success' => true, 'msg' => Configuration::get('SYSPNL_SUCCESS_MSG')];
-
-        // Generar descuento si está activado
-        if (Configuration::get('SYSPNL_DISCOUNT_ACTIVE') && !$alreadySub) {
-            $code = $this->generateDiscount($email, $idShop, $idLang);
-            if ($code) {
-                $response['discount_code'] = $code;
-                $response['discount_msg']  = Configuration::get('SYSPNL_DISCOUNT_MSG');
-            }
-        }
-
-        die(json_encode($response));
-    }
-
-    protected function isAlreadySubscribed(string $email, int $idShop): bool
+    public function checkAlreadySubscribed($email, $idShop)
     {
         $result = Db::getInstance()->getValue(
             'SELECT COUNT(*) FROM `' . _DB_PREFIX_ . 'syspnl_subscribers`
-             WHERE `email` = \'' . pSQL($email) . '\' AND `id_shop` = ' . $idShop
+             WHERE `email` = \'' . pSQL($email) . '\' AND `id_shop` = ' . (int) $idShop
         );
         return (bool) $result;
     }
 
-    protected function saveSubscriber(string $email, int $idShop): void
+    /**
+     * Guarda el suscriptor en la tabla propia e intenta marcar newsletter en ps_customer.
+     */
+    public function saveNewSubscriber($email, $idShop)
     {
-        // Guardar en tabla propia
-        Db::getInstance()->insert('syspnl_subscribers', [
-            'email'    => pSQL($email),
-            'id_shop'  => $idShop,
-            'date_add' => date('Y-m-d H:i:s'),
-        ], false, true, Db::INSERT_IGNORE);
+        Db::getInstance()->execute(
+            'INSERT IGNORE INTO `' . _DB_PREFIX_ . 'syspnl_subscribers`
+             (`email`, `id_shop`, `date_add`)
+             VALUES (\'' . pSQL($email) . '\', ' . (int) $idShop . ', \'' . pSQL(date('Y-m-d H:i:s')) . '\')'
+        );
 
-        // Intentar también suscribir al newsletter nativo de PS (tabla emailsubscription si existe)
+        // Marcar newsletter en cliente PS si existe
         try {
-            $existing = Db::getInstance()->getValue(
-                'SELECT id_customer FROM `' . _DB_PREFIX_ . 'customer`
-                 WHERE `email` = \'' . pSQL($email) . '\' AND `id_shop` = ' . $idShop
+            $idCustomer = (int) Db::getInstance()->getValue(
+                'SELECT `id_customer` FROM `' . _DB_PREFIX_ . 'customer`
+                 WHERE `email` = \'' . pSQL($email) . '\'
+                   AND `id_shop` = ' . (int) $idShop . '
+                   AND `deleted` = 0 LIMIT 1'
             );
-            if ($existing) {
-                Db::getInstance()->update('customer', ['newsletter' => 1], 'id_customer = ' . (int) $existing);
+            if ($idCustomer) {
+                Db::getInstance()->execute(
+                    'UPDATE `' . _DB_PREFIX_ . 'customer`
+                     SET `newsletter` = 1
+                     WHERE `id_customer` = ' . $idCustomer
+                );
             }
         } catch (Exception $e) {
-            // silencioso — no es crítico
+            // no crítico
         }
     }
 
     /**
-     * Crea un CartRule (cupón) único y lo devuelve.
+     * Recupera el código de descuento ya generado para este email (si existe).
      */
-    protected function generateDiscount(string $email, int $idShop, int $idLang)
+    public function getExistingCode($email)
+    {
+        return Db::getInstance()->getValue(
+            'SELECT `discount_code` FROM `' . _DB_PREFIX_ . 'syspnl_subscribers`
+             WHERE `email` = \'' . pSQL($email) . '\' AND `discount_code` != \'\''
+        );
+    }
+
+    /**
+     * Crea un CartRule de PrestaShop y devuelve el código generado.
+     * Compatible con PS 1.7 y PS 8.
+     */
+    public function createDiscountCode($email, $idShop, $idLang)
     {
         try {
             $type  = Configuration::get('SYSPNL_DISCOUNT_TYPE');
             $value = (float) Configuration::get('SYSPNL_DISCOUNT_VALUE');
-            $code  = 'NL-' . strtoupper(substr(md5($email . time()), 0, 8));
+            $code  = 'NL-' . strtoupper(substr(md5($email . microtime(true)), 0, 8));
+
+            // Rellenar nombre para TODOS los idiomas activos (evita error de validación)
+            $languages  = Language::getLanguages(true, $idShop);
+            $nameByLang = [];
+            foreach ($languages as $lang) {
+                $nameByLang[(int) $lang['id_lang']] = 'Newsletter ' . $code;
+            }
+            if (empty($nameByLang)) {
+                $nameByLang[$idLang] = 'Newsletter ' . $code;
+            }
 
             $cartRule = new CartRule();
-            $cartRule->name        = [$idLang => 'Newsletter ' . $code];
-            $cartRule->code        = $code;
-            $cartRule->description = 'Descuento por suscripción al newsletter';
-            $cartRule->quantity    = 1;
+            $cartRule->name              = $nameByLang;
+            $cartRule->code              = $code;
+            $cartRule->description       = 'Descuento por suscripción al newsletter';
+            $cartRule->quantity          = 1;
             $cartRule->quantity_per_user = 1;
-            $cartRule->date_from   = date('Y-m-d H:i:s');
-            $cartRule->date_to     = date('Y-m-d H:i:s', strtotime('+1 year'));
-            $cartRule->active      = 1;
-            $cartRule->id_shop     = $idShop;
+            $cartRule->priority          = 1;
+            $cartRule->partial_use       = 0;
+            $cartRule->highlight         = 1;
+            $cartRule->active            = 1;
+            $cartRule->date_from         = date('Y-m-d H:i:s');
+            $cartRule->date_to           = date('Y-m-d H:i:s', strtotime('+1 year'));
+            $cartRule->id_shop           = (int) $idShop;
+
+            // Inicializar todos los campos de reducción a 0 explícitamente
+            $cartRule->reduction_percent  = 0;
+            $cartRule->reduction_amount   = 0;
+            $cartRule->reduction_tax      = 1;
+            $cartRule->reduction_currency = (int) Configuration::get('PS_CURRENCY_DEFAULT');
+            $cartRule->free_shipping      = false;
+            $cartRule->gift_product       = 0;
 
             if ($type === 'percentage') {
-                $cartRule->reduction_percent = min(100, $value);
+                $cartRule->reduction_percent = (float) min(100, $value);
             } elseif ($type === 'amount') {
-                $cartRule->reduction_amount           = $value;
-                $cartRule->reduction_tax              = true;
-                $cartRule->reduction_currency        = (int) Configuration::get('PS_CURRENCY_DEFAULT');
+                $cartRule->reduction_amount   = (float) $value;
+                $cartRule->reduction_tax      = 1;
+                $cartRule->reduction_currency = (int) Configuration::get('PS_CURRENCY_DEFAULT');
             } elseif ($type === 'shipping') {
                 $cartRule->free_shipping = true;
             }
 
-            $cartRule->add();
+            if (!$cartRule->add()) {
+                return false;
+            }
+
+            // Guardar el código en la tabla de suscriptores para recuperarlo si hace falta
+            Db::getInstance()->execute(
+                'UPDATE `' . _DB_PREFIX_ . 'syspnl_subscribers`
+                 SET `discount_code` = \'' . pSQL($code) . '\'
+                 WHERE `email` = \'' . pSQL($email) . '\''
+            );
 
             return $code;
+
         } catch (Exception $e) {
             return false;
         }
@@ -531,8 +550,17 @@ class SyspNewsletter extends Module
         );
     }
 
-    public function hookDisplayBeforeBodyClosingTag() { return $this->renderPopup(); }
-    public function hookDisplayFooter()               { return $this->renderPopup(); }
+    /** Evitar doble render si ambos hooks están activos */
+    private $popupRendered = false;
+
+    public function hookDisplayBeforeBodyClosingTag() {
+        $this->popupRendered = true;
+        return $this->renderPopup();
+    }
+    public function hookDisplayFooter() {
+        if ($this->popupRendered) return '';
+        return $this->renderPopup();
+    }
 
     protected function renderPopup()
     {
@@ -558,7 +586,19 @@ class SyspNewsletter extends Module
             $bgStyle .= 'background-image:url(' . $bgImage . ');background-size:cover;background-position:center;';
         }
 
-        $ajaxUrl = $this->context->link->getModuleLink($this->name, 'subscribe');
+        // Intentar URL amigable primero, luego fallback a URL clásica
+        try {
+            $ajaxUrl = $this->context->link->getModuleLink(
+                $this->name, 'subscribe', [], null, null,
+                $this->context->shop->id
+            );
+        } catch (Exception $e) {
+            $ajaxUrl = '';
+        }
+        if (empty($ajaxUrl)) {
+            $ajaxUrl = Tools::getShopDomainSsl(true, true)
+                     . '/index.php?fc=module&module=syspnewsletter&controller=subscribe';
+        }
 
         $this->context->smarty->assign([
             'syspnl_title'          => Configuration::get('SYSPNL_TITLE'),

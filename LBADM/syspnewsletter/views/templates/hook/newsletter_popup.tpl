@@ -12,7 +12,7 @@
 {* ── OVERLAY ── *}
 <div id="syspnl-overlay"
      class="syspnl-overlay syspnl-pos-{$syspnl_position}"
-     style="background:{$syspnl_color_overlay};"
+     style="background-color:{$syspnl_color_overlay} !important; background:{$syspnl_color_overlay} !important;"
      data-frequency="{$syspnl_frequency}"
      data-frequency-val="{$syspnl_frequency_val}"
      data-delay="{$syspnl_delay}"

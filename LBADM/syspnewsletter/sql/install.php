@@ -12,6 +12,7 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'syspnl_subscribers` (
     `id_subscriber` int(11) UNSIGNED NOT NULL AUTO_INCREMENT,
     `email`         varchar(255) NOT NULL,
     `id_shop`       int(11) UNSIGNED NOT NULL DEFAULT 1,
+    `discount_code` varchar(64)  NOT NULL DEFAULT \'\',
     `date_add`      datetime NOT NULL,
     PRIMARY KEY (`id_subscriber`),
     UNIQUE KEY `uq_email_shop` (`email`, `id_shop`)
