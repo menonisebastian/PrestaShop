@@ -11,10 +11,12 @@
 
 /* ── Wrap exterior ── */
 #syspnl-preview-wrap {
-  margin: 24px 0 4px;
+  margin: 24px 0 16px;
   text-align: center;
-  overflow: hidden;
   border-radius: 8px;
+  overflow: hidden;
+  display: inline-block;
+  width: 100%;
 }
 
 #syspnl-preview-wrap>h4 {
@@ -32,8 +34,7 @@
   justify-content: center;
   background-color: rgba(0, 0, 0, 0.55);
   border-radius: 8px 8px 0 0;
-  /* ← solo esquinas superiores */
-  padding: 40px 20px;
+  padding: 40px 20px 40px;
   transition: background-color 0.25s;
 }
 
@@ -203,9 +204,10 @@
   gap: 8px;
   margin-top: 0;
   justify-content: center;
-  background-color: #444;
+  background-color: #3a3a3a;
   padding: 12px 20px;
   border-radius: 0 0 8px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 #syspnl-preview-toggle-btns button {
