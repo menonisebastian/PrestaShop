@@ -18,17 +18,16 @@ document.addEventListener('DOMContentLoaded', function () {
       '<div id="syspnl-preview-card">' +
 
       '<div id="syspnl-preview-step-form">' +
-      '<div id="syspnl-preview-discount-teaser" style="display:none;">¡Al suscribirte, recibirás un cupón de descuento! 🎁</div>' +
       '<div id="syspnl-preview-title">Título</div>' +
       '<div id="syspnl-preview-subtitle">Subtítulo del popup</div>' +
+      '<div id="syspnl-preview-discount-teaser" style="display:none;">¡Al suscribirte, recibirás un cupón de descuento! 🎁</div>' +
       '<input id="syspnl-preview-input" type="text" placeholder="Tu correo electrónico" readonly>' +
       '<div id="syspnl-preview-btn">Suscribirme</div>' +
       '<div id="syspnl-preview-skip">No gracias</div>' +
       '</div>' +
 
       '<div id="syspnl-preview-step-success" style="display:none;">' +
-      '<div id="syspnl-preview-success-icon">✅</div>' +
-      '<div id="syspnl-preview-success-msg">¡Gracias por suscribirte! 🎉</div>' +
+      '<div id="syspnl-preview-success-msg">¡Gracias por suscribirte! ✅</div>' +
       '<div id="syspnl-preview-coupon-block" style="display:none;">' +
       '<div id="syspnl-preview-coupon-msg">¡Usa este código en tu próxima compra!</div>' +
       '<div id="syspnl-preview-coupon-wrap">' +
@@ -43,8 +42,8 @@ document.addEventListener('DOMContentLoaded', function () {
       '</div>' +
 
       '<div id="syspnl-preview-toggle-btns">' +
-      '<button id="syspnl-toggle-form" class="active">👁 Ver formulario</button>' +
-      '<button id="syspnl-toggle-success">👁 Ver pantalla de éxito</button>' +
+      '<button type="button" id="syspnl-toggle-form" class="active">👁 Ver formulario</button>' +
+      '<button type="button" id="syspnl-toggle-success">👁 Ver pantalla de éxito</button>' +
       '</div>' +
 
       '</div>';
@@ -71,8 +70,10 @@ document.addEventListener('DOMContentLoaded', function () {
   var toggleForm = document.getElementById('syspnl-toggle-form');
   var toggleSuccess = document.getElementById('syspnl-toggle-success');
 
+  // EVENTOS:
   if (toggleForm) {
-    toggleForm.addEventListener('click', function () {
+    toggleForm.addEventListener('click', function (e) {
+      e.preventDefault(); // Previene cualquier recarga accidental
       stepForm.style.display = 'block';
       stepSuccess.style.display = 'none';
       toggleForm.classList.add('active');
@@ -80,7 +81,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
   if (toggleSuccess) {
-    toggleSuccess.addEventListener('click', function () {
+    toggleSuccess.addEventListener('click', function (e) {
+      e.preventDefault(); // Previene cualquier recarga accidental
       stepForm.style.display = 'none';
       stepSuccess.style.display = 'block';
       toggleForm.classList.remove('active');
