@@ -9,33 +9,49 @@
   color: #fff;
 }
 
-/* Live preview */
+/* ── Wrap exterior ── */
 #syspnl-preview-wrap {
-  background: #f0f0f0;
-  border-radius: 8px;
-  padding: 20px;
-  text-align: center;
   margin: 24px 0 4px;
+  text-align: center;
+  overflow: hidden;
+  border-radius: 8px;
 }
-#syspnl-preview-wrap h4 {
+
+#syspnl-preview-wrap>h4 {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: #888;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
+
+/* ── Overlay simulado ── */
+#syspnl-preview-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.55);
+  border-radius: 8px 8px 0 0;
+  /* ← solo esquinas superiores */
+  padding: 40px 20px;
+  transition: background-color 0.25s;
+}
+
+/* ── Card ── */
 #syspnl-preview-card {
   display: inline-block;
-  padding: 32px 28px;
+  padding: 32px 28px 24px;
   border-radius: 12px;
   background: #fff;
-  box-shadow: 0 8px 30px rgba(0,0,0,0.18);
-  max-width: 340px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22);
+  max-width: 380px;
   width: 100%;
   text-align: left;
   position: relative;
   transition: all 0.25s;
 }
+
+/* ── Título ── */
 #syspnl-preview-title {
   font-weight: 700;
   font-size: 20px;
@@ -43,13 +59,30 @@
   margin-bottom: 8px;
   transition: all 0.25s;
 }
+
+/* ── Subtítulo ── */
 #syspnl-preview-subtitle {
   font-size: 13px;
   color: #666;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   line-height: 1.5;
   transition: all 0.25s;
 }
+
+/* ── Teaser descuento ── */
+#syspnl-preview-discount-teaser {
+  border: 2px dashed #e8927c;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e8927c;
+  text-align: center;
+  margin-bottom: 14px;
+  transition: all 0.25s;
+}
+
+/* ── Input ── */
 #syspnl-preview-input {
   width: 100%;
   padding: 10px 12px;
@@ -59,7 +92,10 @@
   color: #999;
   margin-bottom: 10px;
   pointer-events: none;
+  box-sizing: border-box;
 }
+
+/* ── Botón suscribir ── */
 #syspnl-preview-btn {
   display: block;
   width: 100%;
@@ -71,15 +107,121 @@
   cursor: default;
   transition: all 0.25s;
   text-align: center;
+  color: #fff;
+  background: #e8927c;
+  margin-bottom: 8px;
 }
 
-/* Sección de info sobre subscribers */
-.syspnl-stats-box {
-  background: #fff8f5;
-  border-left: 4px solid #e8927c;
-  padding: 14px 18px;
-  border-radius: 4px;
-  margin-bottom: 20px;
+/* ── No gracias ── */
+#syspnl-preview-skip {
+  text-align: center;
+  font-size: 11px;
+  color: #aaa;
+  text-decoration: underline;
+  cursor: default;
 }
-.syspnl-stats-box h5 { margin: 0 0 4px; color: #c0714f; }
-.syspnl-stats-box p  { margin: 0; color: #666; font-size: 13px; }
+
+/* ── Paso éxito ── */
+#syspnl-preview-success-icon {
+  font-size: 42px;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+#syspnl-preview-success-msg {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a1a1a;
+  text-align: center;
+  margin-bottom: 16px;
+  transition: all 0.25s;
+}
+
+/* ── Bloque cupón ── */
+#syspnl-preview-coupon-block {
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+#syspnl-preview-coupon-msg {
+  font-size: 13px;
+  color: #555;
+  margin-bottom: 10px;
+  transition: all 0.25s;
+}
+
+#syspnl-preview-coupon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #e8927c;
+  border-radius: 8px;
+  padding: 10px 14px;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+#syspnl-preview-coupon-code {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  font-family: 'Courier New', monospace;
+  color: #e8927c;
+}
+
+#syspnl-preview-copy-btn {
+  padding: 5px 12px;
+  border: none;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: default;
+  background: #e8927c;
+  color: #fff;
+  transition: all 0.25s;
+}
+
+/* ── Botón continuar comprando ── */
+#syspnl-preview-continue-btn {
+  display: block;
+  width: 100%;
+  padding: 11px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: default;
+  text-align: center;
+  color: #fff;
+  background: #e8927c;
+  transition: all 0.25s;
+}
+
+/* ── Botones toggle FUERA del popup ── */
+#syspnl-preview-toggle-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 0;
+  justify-content: center;
+  background-color: #444;
+  padding: 12px 20px;
+  border-radius: 0 0 8px 8px;
+}
+
+#syspnl-preview-toggle-btns button {
+  padding: 7px 18px;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  cursor: pointer;
+  color: #fff;
+  transition: all 0.2s;
+}
+
+#syspnl-preview-toggle-btns button.active {
+  background: #e8927c;
+  border-color: #e8927c;
+  color: #fff;
+  font-weight: 600;
+}

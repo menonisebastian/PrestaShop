@@ -17,8 +17,8 @@ class SyspNewsletter extends Module
     {
         $this->name = 'syspnewsletter';
         $this->tab = 'advertising_marketing';
-        $this->version = '1.0.0';
-        $this->author = 'SYSPROVIDER S.L.';
+        $this->version = '3.0.0';
+        $this->author = 'Sebastián / SYSPROVIDER S.L.';
         $this->need_instance = 0;
         $this->bootstrap = true;
 
@@ -424,27 +424,40 @@ class SyspNewsletter extends Module
     {
         Db::getInstance()->execute(
             'INSERT IGNORE INTO `' . _DB_PREFIX_ . 'syspnl_subscribers`
-             (`email`, `id_shop`, `date_add`)
-             VALUES (\'' . pSQL($email) . '\', ' . (int) $idShop . ', \'' . pSQL(date('Y-m-d H:i:s')) . '\')'
+            (`email`, `id_shop`, `date_add`)
+            VALUES (\'' . pSQL($email) . '\', ' . (int) $idShop . ', \'' . pSQL(date('Y-m-d H:i:s')) . '\')'
         );
 
-        // Marcar newsletter en cliente PS si existe
         try {
             $idCustomer = (int) Db::getInstance()->getValue(
                 'SELECT `id_customer` FROM `' . _DB_PREFIX_ . 'customer`
-                 WHERE `email` = \'' . pSQL($email) . '\'
-                   AND `id_shop` = ' . (int) $idShop . '
-                   AND `deleted` = 0 LIMIT 1'
+                WHERE `email` = "' . pSQL($email) . '"
+                AND `deleted` = 0'
             );
+
+            // Debug temporal
+            $lastError = Db::getInstance()->getMsgError();
+            file_put_contents('/tmp/syspnl_debug.log',
+                date('Y-m-d H:i:s') . ' PREFIX=' . _DB_PREFIX_ . 
+                ' email=' . $email . 
+                ' idCustomer=' . $idCustomer . 
+                ' dbError=' . $lastError .
+                ' query=SELECT id_customer FROM ' . _DB_PREFIX_ . 'customer WHERE email=' . pSQL($email) . "\n",
+                FILE_APPEND
+            );
+
             if ($idCustomer) {
                 Db::getInstance()->execute(
                     'UPDATE `' . _DB_PREFIX_ . 'customer`
-                     SET `newsletter` = 1
-                     WHERE `id_customer` = ' . $idCustomer
+                    SET `newsletter` = 1
+                    WHERE `id_customer` = ' . $idCustomer
                 );
             }
         } catch (Exception $e) {
-            // no crítico
+            file_put_contents('/tmp/syspnl_debug.log',
+                date('Y-m-d H:i:s') . ' EXCEPTION: ' . $e->getMessage() . "\n",
+                FILE_APPEND
+            );
         }
     }
 
@@ -492,7 +505,7 @@ class SyspNewsletter extends Module
             $cartRule->active            = 1;
             $cartRule->date_from         = date('Y-m-d H:i:s');
             $cartRule->date_to           = date('Y-m-d H:i:s', strtotime('+1 year'));
-            $cartRule->id_shop           = (int) $idShop;
+            //$cartRule->id_shop           = (int) $idShop;
 
             // Inicializar todos los campos de reducción a 0 explícitamente
             $cartRule->reduction_percent  = 0;
@@ -588,10 +601,8 @@ class SyspNewsletter extends Module
 
         // Intentar URL amigable primero, luego fallback a URL clásica
         try {
-            $ajaxUrl = $this->context->link->getModuleLink(
-                $this->name, 'subscribe', [], null, null,
-                $this->context->shop->id
-            );
+            $ajaxUrl = Tools::getShopDomainSsl(true, true)
+         . '/index.php?fc=module&module=syspnewsletter&controller=subscribe';
         } catch (Exception $e) {
             $ajaxUrl = '';
         }
