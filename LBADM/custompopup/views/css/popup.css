@@ -1,0 +1,69 @@
+/*-------------------------------
+
+	POPUP.CSS
+
+-------------------------------*/
+
+.popup_back {
+	height: 100%;
+	left: 0;
+	position: fixed;
+	top: 0;
+	width: 100%;
+	z-index: 100;
+}
+
+.popup_cont {
+	position: fixed;
+	z-index: 99999;
+}
+
+@media only screen and (max-width: 991px){
+
+.popup_cont {
+	left: 0px !important;
+    margin-left: 30px !important;
+	margin-right: 30px !important;
+	}
+
+  }
+
+.preloader {
+	z-index: 101;
+}
+
+/*---------------------
+
+	EDIT BELOW
+
+*/
+
+
+.popup {
+	padding: 0px !important;
+	padding-top: 0px !important;
+	}
+
+
+.popup_close {
+	cursor: pointer;
+	position: absolute;
+	padding: 5px;
+	padding-top:0px;
+}
+
+.popup_back {
+	z-index:99999;
+}
+
+div.popup {
+	z-index:999990;
+	box-shadow: 0 3px 10px #222;
+}
+
+.preloader {
+	left: 50%;
+	margin: -10px 0 0 -25px;
+	position: fixed;
+	top: 50%;
+}

@@ -1,0 +1,260 @@
+/**
+ * SYSPROVIDER Newsletter Popup — Frontend CSS
+ * @author    SYSPROVIDER S.L.
+ * @copyright 2024 SYSPROVIDER S.L.
+ */
+
+/* ── Reset & box-sizing ── */
+#syspnl-overlay *, #syspnl-overlay *::before, #syspnl-overlay *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Overlay ── */
+.syspnl-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: none;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.syspnl-overlay.syspnl-visible {
+  display: flex;
+}
+
+/* Posicionamiento */
+.syspnl-overlay.syspnl-pos-center       { align-items: center;     justify-content: center; }
+.syspnl-overlay.syspnl-pos-top          { align-items: flex-start;  justify-content: center; padding-top: 40px; }
+.syspnl-overlay.syspnl-pos-bottom       { align-items: flex-end;    justify-content: center; padding-bottom: 40px; }
+.syspnl-overlay.syspnl-pos-bottom-right { align-items: flex-end;    justify-content: flex-end; }
+.syspnl-overlay.syspnl-pos-bottom-left  { align-items: flex-end;    justify-content: flex-start; }
+
+/* ── Card ── */
+.syspnl-card {
+  position: relative;
+  width: 100%;
+  padding: 44px 40px 36px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  overflow: hidden;
+}
+
+/* ── Botón cerrar ── */
+.syspnl-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: rgba(0,0,0,0.08);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #444;
+  transition: background 0.2s, transform 0.2s;
+  z-index: 10;
+}
+.syspnl-close:hover { background: rgba(0,0,0,0.18); transform: scale(1.1); }
+
+/* ── Icono ── */
+.syspnl-icon {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+/* ── Textos ── */
+.syspnl-title {
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  margin-bottom: 10px;
+  letter-spacing: -0.3px;
+}
+
+.syspnl-subtitle {
+  line-height: 1.55;
+  text-align: center;
+  margin-bottom: 20px;
+  opacity: 0.9;
+}
+
+/* ── Teaser descuento ── */
+.syspnl-discount-teaser {
+  border: 2px dashed;
+  border-radius: 8px;
+  padding: 8px 14px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  letter-spacing: 0.2px;
+}
+
+/* ── Input ── */
+.syspnl-form-group { width: 100%; margin-bottom: 12px; }
+
+.syspnl-input {
+  width: 100%;
+  padding: 13px 16px;
+  border: 1.5px solid;
+  border-radius: 8px;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background: #fff;
+  color: #222;
+}
+.syspnl-input:focus {
+  border-color: currentColor;
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.07);
+}
+.syspnl-input.syspnl-input-error { border-color: #e74c3c !important; }
+
+.syspnl-error {
+  color: #e74c3c;
+  font-size: 12px;
+  margin-top: 5px;
+  min-height: 16px;
+}
+
+/* ── Botón principal ── */
+.syspnl-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s;
+  letter-spacing: 0.3px;
+  margin-bottom: 12px;
+}
+.syspnl-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+.syspnl-btn:disabled             { opacity: 0.6; cursor: not-allowed; }
+
+/* Spinner de carga */
+.syspnl-btn-spinner {
+  display: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.5);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: syspnl-spin 0.7s linear infinite;
+}
+.syspnl-btn.syspnl-loading .syspnl-btn-spinner { display: block; }
+.syspnl-btn.syspnl-loading .syspnl-btn-label   { display: none; }
+
+@keyframes syspnl-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Enlace "No gracias" ── */
+.syspnl-skip {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: center;
+  color: #999;
+  font-size: 12px;
+  padding: 4px;
+  transition: color 0.2s;
+  text-decoration: underline;
+}
+.syspnl-skip:hover { color: #555; }
+
+/* ── Paso éxito ── */
+.syspnl-success-icon {
+  font-size: 48px;
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+/* ── Bloque cupón ── */
+.syspnl-coupon-block {
+  margin-top: 20px;
+  text-align: center;
+}
+.syspnl-coupon-msg {
+  font-size: 14px;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+.syspnl-coupon-code-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed;
+  border-radius: 8px;
+  padding: 10px 14px;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.syspnl-coupon-code {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  font-family: monospace;
+}
+.syspnl-copy-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+.syspnl-copy-btn:hover { opacity: 0.85; }
+
+.syspnl-copied-msg {
+  font-size: 12px;
+  color: #27ae60;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.3s;
+  margin-top: 4px;
+}
+.syspnl-copied-msg.syspnl-show { opacity: 1; }
+
+/* ── Animaciones ── */
+@keyframes syspnl-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes syspnl-zoom {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes syspnl-slide-down {
+  from { opacity: 0; transform: translateY(-40px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes syspnl-slide-up {
+  from { opacity: 0; transform: translateY(40px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.syspnl-overlay.syspnl-visible .syspnl-anim-fade       { animation: syspnl-fade       0.35s ease; }
+.syspnl-overlay.syspnl-visible .syspnl-anim-zoom       { animation: syspnl-zoom       0.35s ease; }
+.syspnl-overlay.syspnl-visible .syspnl-anim-slide-down { animation: syspnl-slide-down 0.35s ease; }
+.syspnl-overlay.syspnl-visible .syspnl-anim-slide-up   { animation: syspnl-slide-up   0.35s ease; }
+
+/* ── Responsive ── */
+@media (max-width: 560px) {
+  .syspnl-card { padding: 36px 22px 28px; }
+  .syspnl-coupon-code { font-size: 18px; }
+}

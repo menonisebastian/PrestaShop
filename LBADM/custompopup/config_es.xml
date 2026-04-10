@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<module>
+    <name>custompopup</name>
+    <displayName><![CDATA[POP UP para Prestashop 1.6 y 1.7]]></displayName>
+    <version><![CDATA[1.2.1]]></version>
+    <description><![CDATA[Pon en tu tienda online un POP UP Responsive.]]></description>
+    <author><![CDATA[Corecreativo]]></author>
+    <tab><![CDATA[front_office_features]]></tab>
+	<confirmUninstall><![CDATA[Are you sure you want to uninstall?]]></confirmUninstall>
+    <is_configurable>1</is_configurable>
+    <need_instance>0</need_instance>
+	<limited_countries></limited_countries>
+</module>
