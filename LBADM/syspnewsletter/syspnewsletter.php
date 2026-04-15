@@ -130,7 +130,7 @@ class SyspNewsletter extends Module
     public function getContent()
     {
         $subscribersUrl = $this->context->link
-            ->getAdminLink('AdminSyspNewsletterSuscribers');
+            ->getAdminLink('AdminSyspNewsletterSubscribers');
 
 
         $btnHtml = '<a href="' . $subscribersUrl . '" class="btn btn-default" '
@@ -764,7 +764,7 @@ class SyspNewsletter extends Module
     {
         $tab = new Tab();
         $tab->active = 1;
-        $tab->class_name = 'AdminSyspNewsletterSuscribers';
+        $tab->class_name = 'AdminSyspNewsletterSubscribers';
         $tab->module = $this->name;
         $tab->id_parent = -1; // -1 = oculto del menú principal (accesible por URL)
 
@@ -781,7 +781,7 @@ class SyspNewsletter extends Module
      */
     protected function uninstallAdminTab()
     {
-        $idTab = (int) Tab::getIdFromClassName('AdminSyspNewsletterSuscribers');
+        $idTab = (int) Tab::getIdFromClassName('AdminSyspNewsletterSubscribers');
         if ($idTab) {
             $tab = new Tab($idTab);
             return (bool) $tab->delete();

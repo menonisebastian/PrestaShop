@@ -30,7 +30,7 @@
 .syspnl-admin-icon {
   font-size: 32px;
   line-height: 1;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
 .syspnl-admin-title {
@@ -44,7 +44,7 @@
 .syspnl-admin-subtitle {
   margin: 0;
   font-size: 13px;
-  color: rgba(255,255,255,0.8);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .syspnl-btn-config {
@@ -52,8 +52,8 @@
   align-items: center;
   gap: 6px;
   padding: 9px 18px;
-  background: rgba(255,255,255,0.2);
-  border: 1.5px solid rgba(255,255,255,0.5);
+  background: rgba(255, 255, 255, 0.2);
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
   border-radius: 6px;
   color: #fff !important;
   font-size: 13px;
@@ -64,7 +64,7 @@
 }
 
 .syspnl-btn-config:hover {
-  background: rgba(255,255,255,0.32);
+  background: rgba(255, 255, 255, 0.32);
   color: #fff !important;
   text-decoration: none !important;
 }
@@ -130,10 +130,21 @@
   letter-spacing: -0.5px;
 }
 
-.syspnl-kpi-total .syspnl-kpi-number   { color: #e8927c; }
-.syspnl-kpi-today .syspnl-kpi-number   { color: #f0b429; }
-.syspnl-kpi-month .syspnl-kpi-number   { color: #4caf50; }
-.syspnl-kpi-coupon .syspnl-kpi-number  { color: #3498db; }
+.syspnl-kpi-total .syspnl-kpi-number {
+  color: #e8927c;
+}
+
+.syspnl-kpi-today .syspnl-kpi-number {
+  color: #f0b429;
+}
+
+.syspnl-kpi-month .syspnl-kpi-number {
+  color: #4caf50;
+}
+
+.syspnl-kpi-coupon .syspnl-kpi-number {
+  color: #3498db;
+}
 
 .syspnl-kpi-label {
   font-size: 12px;
@@ -171,7 +182,7 @@
 }
 
 /* ── Mejora de la tabla de PS ── */
-.syspnl-admin-wrap + .panel .panel-heading {
+.syspnl-admin-wrap+.panel .panel-heading {
   background: linear-gradient(135deg, #3d2c27 0%, #6b5a52 100%);
   color: #fff;
 }
