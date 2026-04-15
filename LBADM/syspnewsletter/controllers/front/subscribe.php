@@ -1,10 +1,12 @@
 <?php
-if (!defined('_PS_VERSION_')) { exit; }
+if (!defined('_PS_VERSION_')) {
+    exit;
+}
 
 class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
 {
     public $ajax = true;
-    public $display_column_left  = false;
+    public $display_column_left = false;
     public $display_column_right = false;
 
     public function initContent()
@@ -16,7 +18,7 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
         header('Pragma: no-cache');
 
         try {
-            $email = trim(Tools::getValue('email', ''));
+            $email = strtolower(trim(Tools::getValue('email', '')));
 
             if (empty($email) || !Validate::isEmail($email)) {
                 ob_end_clean();
@@ -40,7 +42,7 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
 
             $response = [
                 'success' => true,
-                'msg'     => Configuration::get('SYSPNL_SUCCESS_MSG') ?: '¡Gracias por suscribirte!',
+                'msg' => Configuration::get('SYSPNL_SUCCESS_MSG') ?: '¡Gracias por suscribirte!',
             ];
 
             if ((int) Configuration::get('SYSPNL_DISCOUNT_ACTIVE') === 1) {
@@ -50,8 +52,8 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
                 }
                 if ($code) {
                     $response['discount_code'] = $code;
-                    $response['discount_msg']  = Configuration::get('SYSPNL_DISCOUNT_MSG')
-                                                 ?: '¡Usa este código en tu próxima compra!';
+                    $response['discount_msg'] = Configuration::get('SYSPNL_DISCOUNT_MSG')
+                        ?: '¡Usa este código en tu próxima compra!';
                 }
             }
 
@@ -62,7 +64,7 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
             ob_end_clean();
             $this->jsonDie([
                 'success' => false,
-                'error'   => 'Error interno: ' . $e->getMessage(),
+                'error' => 'Error interno: ' . $e->getMessage(),
             ]);
         }
     }

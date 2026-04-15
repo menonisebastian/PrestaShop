@@ -202,11 +202,10 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
             );
 
             if ($email) {
-                // 2. Desuscribir forzosamente de las tablas nativas de PrestaShop
-                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'customer` SET `newsletter` = 0 WHERE `email` = \'' . pSQL($email) . '\'');
-                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 0 WHERE `email` = \'' . pSQL($email) . '\'');
+                $email = strtolower(trim($email)); // ← AÑADIR ESTA LÍNEA
+                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'customer` SET `newsletter` = 0 WHERE LOWER(`email`) = \'' . pSQL($email) . '\'');
+                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 0 WHERE LOWER(`email`) = \'' . pSQL($email) . '\'');
             }
-
             // 3. Ahora sí, lo borramos de la tabla interna del módulo
             $sql = 'DELETE FROM `' . _DB_PREFIX_ . bqSQL($this->table) . '` WHERE `' . bqSQL($this->identifier) . '` = ' . $id;
 
@@ -235,9 +234,9 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
 
             // 2. Desuscribimos a todos de las tablas nativas
             foreach ($emails as $row) {
-                $e = pSQL($row['email']);
-                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'customer` SET `newsletter` = 0 WHERE `email` = \'' . $e . '\'');
-                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 0 WHERE `email` = \'' . $e . '\'');
+                $e = strtolower(trim($row['email'])); // ← strtolower() aquí también
+                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'customer` SET `newsletter` = 0 WHERE LOWER(`email`) = \'' . pSQL($e) . '\'');
+                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 0 WHERE LOWER(`email`) = \'' . pSQL($e) . '\'');
             }
 
             // 3. Los borramos de la tabla interna del módulo

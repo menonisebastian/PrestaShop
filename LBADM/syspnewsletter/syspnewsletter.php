@@ -34,10 +34,13 @@ class SyspNewsletter extends Module
     {
         include(dirname(__FILE__) . '/sql/install.php');
 
+        // DESPUÉS:
         return parent::install()
             && $this->registerHook('actionFrontControllerSetMedia')
             && $this->registerHook('displayBeforeBodyClosingTag')
             && $this->registerHook('displayFooter')
+            && $this->registerHook('actionCustomerAccountAdd')       // registro nuevo cliente
+            && $this->registerHook('actionNewsletterRegistrationBefore') // suscripción módulo nativo PS
             && $this->installAdminTab()
             && $this->setDefaultConfig();
     }
@@ -532,6 +535,13 @@ class SyspNewsletter extends Module
      */
     public function saveNewSubscriber($email, $idShop)
     {
+        $email = strtolower(trim($email)); // ← AÑADIR ESTA LÍNEA
+        $db = Db::getInstance();
+        $db->execute(
+            'INSERT IGNORE INTO `' . _DB_PREFIX_ . 'syspnl_subscribers` (`email`, `id_shop`, `date_add`) 
+             VALUES (\'' . pSQL($email) . '\', ' . (int) $idShop . ', NOW())'
+        );
+
         $db = Db::getInstance();
 
         // 1. Guardar en tu tabla interna (módulo)
@@ -771,11 +781,23 @@ class SyspNewsletter extends Module
         $tab->active = 1;
         $tab->class_name = 'AdminSyspNewsletterSubscribers';
         $tab->module = $this->name;
-        $tab->id_parent = -1; // -1 = oculto del menú principal (accesible por URL)
+        $tab->id_parent = -1;
 
-        // Nombre visible en todos los idiomas activos
-        foreach (Language::getLanguages(true) as $lang) {
-            $tab->name[$lang['id_lang']] = 'Suscriptores Newsletter';
+        $languages = Language::getLanguages(true);
+
+        // Fallback: si no hay idiomas activos, usar el idioma por defecto de PS
+        if (empty($languages)) {
+            $idLang = (int) Configuration::get('PS_LANG_DEFAULT');
+            $tab->name[$idLang] = 'Suscriptores Newsletter';
+        } else {
+            foreach ($languages as $lang) {
+                $tab->name[(int) $lang['id_lang']] = 'Suscriptores Newsletter';
+            }
+        }
+
+        // Guardia final: PS exige al menos un nombre, si sigue vacío forzamos id 1
+        if (empty($tab->name)) {
+            $tab->name[1] = 'Suscriptores Newsletter';
         }
 
         return (bool) $tab->add();
@@ -792,5 +814,28 @@ class SyspNewsletter extends Module
             return (bool) $tab->delete();
         }
         return true;
+    }
+
+    // ── HOOK: cliente nuevo con newsletter marcado ──────────────────────────
+    public function hookActionCustomerAccountAdd(array $params)
+    {
+        $customer = isset($params['newCustomer']) ? $params['newCustomer'] : null;
+        if (!$customer || !$customer->newsletter) {
+            return;
+        }
+        $email = strtolower(trim($customer->email));
+        $idShop = (int) $this->context->shop->id;
+        $this->saveNewSubscriber($email, $idShop);
+    }
+
+    // ── HOOK: suscripción desde el módulo nativo de PS (ps_emailsubscription) ──
+    public function hookActionNewsletterRegistrationBefore(array $params)
+    {
+        $email = strtolower(trim(isset($params['email']) ? $params['email'] : ''));
+        if (!$email || !Validate::isEmail($email)) {
+            return;
+        }
+        $idShop = (int) $this->context->shop->id;
+        $this->saveNewSubscriber($email, $idShop);
     }
 }
