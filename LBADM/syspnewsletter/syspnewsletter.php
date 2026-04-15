@@ -532,44 +532,59 @@ class SyspNewsletter extends Module
      */
     public function saveNewSubscriber($email, $idShop)
     {
-        Db::getInstance()->execute(
-            'INSERT IGNORE INTO `' . _DB_PREFIX_ . 'syspnl_subscribers`
-            (`email`, `id_shop`, `date_add`)
-            VALUES (\'' . pSQL($email) . '\', ' . (int) $idShop . ', \'' . pSQL(date('Y-m-d H:i:s')) . '\')'
+        $db = Db::getInstance();
+
+        // 1. Guardar en tu tabla interna (módulo)
+        $db->execute(
+            'INSERT IGNORE INTO `' . _DB_PREFIX_ . 'syspnl_subscribers` (`email`, `id_shop`, `date_add`) 
+             VALUES (\'' . pSQL($email) . '\', ' . (int) $idShop . ', NOW())'
         );
 
         try {
-            $idCustomer = (int) Db::getInstance()->getValue(
-                'SELECT `id_customer` FROM `' . _DB_PREFIX_ . 'customer`
-                WHERE `email` = "' . pSQL($email) . '"
-                AND `deleted` = 0'
+            // 2. Sincronizar FORZOSAMENTE con clientes registrados (PrestaShop nativo)
+            // Si el correo es de un cliente, le activamos la casilla de newsletter.
+            $db->execute(
+                'UPDATE `' . _DB_PREFIX_ . 'customer` 
+                 SET `newsletter` = 1, `newsletter_date_add` = NOW() 
+                 WHERE `email` = \'' . pSQL($email) . '\''
             );
 
-            // Debug temporal
-            $lastError = Db::getInstance()->getMsgError();
-            file_put_contents(
-                '/tmp/syspnl_debug.log',
-                date('Y-m-d H:i:s') . ' PREFIX=' . _DB_PREFIX_ .
-                ' email=' . $email .
-                ' idCustomer=' . $idCustomer .
-                ' dbError=' . $lastError .
-                ' query=SELECT id_customer FROM ' . _DB_PREFIX_ . 'customer WHERE email=' . pSQL($email) . "\n",
-                FILE_APPEND
+            // 3. Sincronizar FORZOSAMENTE con la tabla de invitados (PrestaShop nativo)
+            // Comprobamos si ya estaba en la tabla de visitantes
+            $existsInGuest = (bool) $db->getValue(
+                'SELECT `id` FROM `' . _DB_PREFIX_ . 'emailsubscription` 
+                 WHERE `email` = \'' . pSQL($email) . '\''
             );
 
-            if ($idCustomer) {
-                Db::getInstance()->execute(
-                    'UPDATE `' . _DB_PREFIX_ . 'customer`
-                    SET `newsletter` = 1
-                    WHERE `id_customer` = ' . $idCustomer
+            if ($existsInGuest) {
+                // Si ya existía pero estaba dado de baja, lo reactivamos
+                $db->execute(
+                    'UPDATE `' . _DB_PREFIX_ . 'emailsubscription` 
+                     SET `active` = 1, `newsletter_date_add` = NOW() 
+                     WHERE `email` = \'' . pSQL($email) . '\''
+                );
+            } else {
+                // Si no existía, lo insertamos como nuevo visitante suscrito
+                $idLang = isset($this->context->language->id) ? (int) $this->context->language->id : (int) Configuration::get('PS_LANG_DEFAULT');
+                $idGroup = isset($this->context->shop->id_shop_group) ? (int) $this->context->shop->id_shop_group : 1;
+
+                $db->execute(
+                    'INSERT IGNORE INTO `' . _DB_PREFIX_ . 'emailsubscription` 
+                    (`id_shop`, `id_shop_group`, `email`, `newsletter_date_add`, `ip_registration_newsletter`, `http_referer`, `active`, `id_lang`) 
+                    VALUES (
+                        ' . (int) $idShop . ', 
+                        ' . $idGroup . ', 
+                        \'' . pSQL($email) . '\', 
+                        NOW(), 
+                        \'' . pSQL(Tools::getRemoteAddr()) . '\', 
+                        \'\', 
+                        1, 
+                        ' . $idLang . '
+                    )'
                 );
             }
         } catch (Exception $e) {
-            file_put_contents(
-                '/tmp/syspnl_debug.log',
-                date('Y-m-d H:i:s') . ' EXCEPTION: ' . $e->getMessage() . "\n",
-                FILE_APPEND
-            );
+            PrestaShopLogger::addLog('SyspNewsletter Error de Sincronización: ' . $e->getMessage(), 3);
         }
     }
 
@@ -714,17 +729,7 @@ class SyspNewsletter extends Module
             $bgStyle .= 'background-image:url(' . $bgImage . ');background-size:cover;background-position:center;';
         }
 
-        // Intentar URL amigable primero, luego fallback a URL clásica
-        try {
-            $ajaxUrl = Tools::getShopDomainSsl(true, true)
-                . '/index.php?fc=module&module=syspnewsletter&controller=subscribe';
-        } catch (Exception $e) {
-            $ajaxUrl = '';
-        }
-        if (empty($ajaxUrl)) {
-            $ajaxUrl = Tools::getShopDomainSsl(true, true)
-                . '/index.php?fc=module&module=syspnewsletter&controller=subscribe';
-        }
+        $ajaxUrl = $this->context->link->getModuleLink($this->name, 'subscribe', ['ajax' => '1'], true);
 
         $this->context->smarty->assign([
             'syspnl_title' => Configuration::get('SYSPNL_TITLE'),

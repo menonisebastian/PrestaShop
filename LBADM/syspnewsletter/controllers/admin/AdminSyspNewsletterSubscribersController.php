@@ -188,4 +188,66 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
         // Quitar botón "Añadir nuevo" (no aplica)
         unset($this->toolbar_btn['new']);
     }
+
+    // ── Sobrescribir el Borrado Individual y Sincronizar ────────────────────
+    public function processDelete()
+    {
+        $id = (int) Tools::getValue($this->identifier);
+
+        if ($id) {
+            // 1. Obtenemos el email ANTES de borrarlo de nuestra tabla
+            $email = Db::getInstance()->getValue(
+                'SELECT `email` FROM `' . _DB_PREFIX_ . bqSQL($this->table) . '` 
+                 WHERE `' . bqSQL($this->identifier) . '` = ' . $id
+            );
+
+            if ($email) {
+                // 2. Desuscribir forzosamente de las tablas nativas de PrestaShop
+                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'customer` SET `newsletter` = 0 WHERE `email` = \'' . pSQL($email) . '\'');
+                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 0 WHERE `email` = \'' . pSQL($email) . '\'');
+            }
+
+            // 3. Ahora sí, lo borramos de la tabla interna del módulo
+            $sql = 'DELETE FROM `' . _DB_PREFIX_ . bqSQL($this->table) . '` WHERE `' . bqSQL($this->identifier) . '` = ' . $id;
+
+            if (Db::getInstance()->execute($sql)) {
+                $this->redirect_after = self::$currentIndex . '&conf=1&token=' . $this->token;
+            } else {
+                $this->errors[] = $this->l('Error al intentar eliminar el suscriptor.');
+            }
+        }
+
+        return false;
+    }
+
+    // ── Sobrescribir el Borrado Masivo y Sincronizar ────────────────────────
+    protected function processBulkDelete()
+    {
+        if (is_array($this->boxes) && !empty($this->boxes)) {
+            $ids = array_map('intval', $this->boxes);
+            $id_list = implode(',', $ids);
+
+            // 1. Obtenemos todos los emails de los IDs seleccionados
+            $emails = Db::getInstance()->executeS(
+                'SELECT `email` FROM `' . _DB_PREFIX_ . bqSQL($this->table) . '` 
+                 WHERE `' . bqSQL($this->identifier) . '` IN (' . $id_list . ')'
+            );
+
+            // 2. Desuscribimos a todos de las tablas nativas
+            foreach ($emails as $row) {
+                $e = pSQL($row['email']);
+                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'customer` SET `newsletter` = 0 WHERE `email` = \'' . $e . '\'');
+                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 0 WHERE `email` = \'' . $e . '\'');
+            }
+
+            // 3. Los borramos de la tabla interna del módulo
+            $sql = 'DELETE FROM `' . _DB_PREFIX_ . bqSQL($this->table) . '` WHERE `' . bqSQL($this->identifier) . '` IN (' . $id_list . ')';
+
+            if (Db::getInstance()->execute($sql)) {
+                $this->redirect_after = self::$currentIndex . '&conf=2&token=' . $this->token;
+            } else {
+                $this->errors[] = $this->l('Error al eliminar los suscriptores seleccionados.');
+            }
+        }
+    }
 }
