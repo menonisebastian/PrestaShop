@@ -116,13 +116,14 @@ class SyspNewsletter extends Module
             'SYSPNL_DISCOUNT_TYPE' => 'percentage',
             'SYSPNL_DISCOUNT_VALUE' => 10,
             'SYSPNL_DISCOUNT_MSG' => '¡Usa este código en tu próxima compra!',
-            'SYSPNL_SUCCESS_MSG' => '¡Gracias por suscribirte! 🎉',
+            'SYSPNL_SUCCESS_MSG' => '¡Gracias por suscribirte!',
             'SYSPNL_BG_IMAGE' => '',
             'SYSPNL_POSITION' => 'center',
         ];
 
         foreach ($defaults as $key => $value) {
-            Configuration::updateValue($key, $value);
+            // Añadimos 'true' al final para permitir el símbolo # y caracteres especiales
+            Configuration::updateValue($key, $value, true);
         }
 
         return true;
@@ -510,7 +511,8 @@ class SyspNewsletter extends Module
         ];
 
         foreach ($keys as $key) {
-            Configuration::updateValue($key, Tools::getValue($key));
+            // Añadimos 'true' para que al darle a "Guardar" en el panel, acepte los colores
+            Configuration::updateValue($key, Tools::getValue($key), true);
         }
 
         return $this->displayConfirmation($this->l('Configuración guardada correctamente'));
@@ -809,7 +811,7 @@ class SyspNewsletter extends Module
 
         // 4. Guardar pestaña y FORZAR PERMISOS
         if ($tab->add()) {
-
+            
             // --- INYECCIÓN AUTOMÁTICA DE PERMISOS PARA PRESTASHOP 8 ---
             $roles = [
                 'ROLE_MOD_TAB_ADMINSYSPNEWSLETTERSUBSCRIBERS_CREATE',
@@ -817,16 +819,16 @@ class SyspNewsletter extends Module
                 'ROLE_MOD_TAB_ADMINSYSPNEWSLETTERSUBSCRIBERS_UPDATE',
                 'ROLE_MOD_TAB_ADMINSYSPNEWSLETTERSUBSCRIBERS_DELETE'
             ];
-
+            
             $db = Db::getInstance();
-
+            
             foreach ($roles as $role) {
                 // Crear el rol si no existe
                 $db->execute('INSERT IGNORE INTO `' . _DB_PREFIX_ . 'authorization_role` (`slug`) VALUES ("' . pSQL($role) . '")');
-
+                
                 // Obtener el ID del rol recién creado
                 $id_role = (int) $db->getValue('SELECT `id_authorization_role` FROM `' . _DB_PREFIX_ . 'authorization_role` WHERE `slug` = "' . pSQL($role) . '"');
-
+                
                 // Asignárselo al SuperAdmin (id_profile = 1)
                 if ($id_role) {
                     $db->execute('INSERT IGNORE INTO `' . _DB_PREFIX_ . 'access` (`id_profile`, `id_authorization_role`) VALUES (1, ' . $id_role . ')');
