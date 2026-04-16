@@ -41,6 +41,7 @@ class SyspNewsletter extends Module
             && $this->registerHook('displayFooter')
             && $this->registerHook('actionCustomerAccountAdd')       // registro nuevo cliente
             && $this->registerHook('actionNewsletterRegistrationBefore') // suscripción módulo nativo PS
+            && $this->registerHook('actionObjectCustomerUpdateAfter')
             && $this->installAdminTab()
             && $this->setDefaultConfig();
     }
@@ -116,13 +117,14 @@ class SyspNewsletter extends Module
             'SYSPNL_DISCOUNT_TYPE' => 'percentage',
             'SYSPNL_DISCOUNT_VALUE' => 10,
             'SYSPNL_DISCOUNT_MSG' => '¡Usa este código en tu próxima compra!',
-            'SYSPNL_SUCCESS_MSG' => '¡Gracias por suscribirte! 🎉',
+            'SYSPNL_SUCCESS_MSG' => '¡Gracias por suscribirte!',
             'SYSPNL_BG_IMAGE' => '',
             'SYSPNL_POSITION' => 'center',
         ];
 
         foreach ($defaults as $key => $value) {
-            Configuration::updateValue($key, $value);
+            // Añadimos 'true' al final para permitir el símbolo # y caracteres especiales
+            Configuration::updateValue($key, $value, true);
         }
 
         return true;
@@ -510,7 +512,8 @@ class SyspNewsletter extends Module
         ];
 
         foreach ($keys as $key) {
-            Configuration::updateValue($key, Tools::getValue($key));
+            // Añadimos 'true' para que al darle a "Guardar" en el panel, acepte los colores
+            Configuration::updateValue($key, Tools::getValue($key), true);
         }
 
         return $this->displayConfirmation($this->l('Configuración guardada correctamente'));
@@ -530,74 +533,61 @@ class SyspNewsletter extends Module
         return (bool) $result;
     }
 
-    /**
-     * Guarda el suscriptor en la tabla propia e intenta marcar newsletter en ps_customer.
-     */
     public function saveNewSubscriber($email, $idShop)
     {
-        $email = strtolower(trim($email)); // ← AÑADIR ESTA LÍNEA
+        $email = strtolower(trim($email));
         $db = Db::getInstance();
-        $db->execute(
-            'INSERT IGNORE INTO `' . _DB_PREFIX_ . 'syspnl_subscribers` (`email`, `id_shop`, `date_add`) 
-             VALUES (\'' . pSQL($email) . '\', ' . (int) $idShop . ', NOW())'
-        );
-
-        $db = Db::getInstance();
-
-        // 1. Guardar en tu tabla interna (módulo)
-        $db->execute(
-            'INSERT IGNORE INTO `' . _DB_PREFIX_ . 'syspnl_subscribers` (`email`, `id_shop`, `date_add`) 
-             VALUES (\'' . pSQL($email) . '\', ' . (int) $idShop . ', NOW())'
-        );
 
         try {
-            // 2. Sincronizar FORZOSAMENTE con clientes registrados (PrestaShop nativo)
-            // Si el correo es de un cliente, le activamos la casilla de newsletter.
-            $db->execute(
-                'UPDATE `' . _DB_PREFIX_ . 'customer` 
-                 SET `newsletter` = 1, `newsletter_date_add` = NOW() 
-                 WHERE `email` = \'' . pSQL($email) . '\''
-            );
+            // 1. Guardamos SIEMPRE en tu tabla para alimentar tus estadísticas y CSV
+            $db->execute('INSERT IGNORE INTO `' . _DB_PREFIX_ . 'syspnl_subscribers` (`email`, `id_shop`, `date_add`) VALUES (\'' . pSQL($email) . '\', ' . (int) $idShop . ', NOW())');
 
-            // 3. Sincronizar FORZOSAMENTE con la tabla de invitados (PrestaShop nativo)
-            // Comprobamos si ya estaba en la tabla de visitantes
-            $existsInGuest = (bool) $db->getValue(
-                'SELECT `id` FROM `' . _DB_PREFIX_ . 'emailsubscription` 
-                 WHERE `email` = \'' . pSQL($email) . '\''
-            );
+            $customers = Customer::getCustomersByEmail($email);
+            $is_registered = false;
 
-            if ($existsInGuest) {
-                // Si ya existía pero estaba dado de baja, lo reactivamos
-                $db->execute(
-                    'UPDATE `' . _DB_PREFIX_ . 'emailsubscription` 
-                     SET `active` = 1, `newsletter_date_add` = NOW() 
-                     WHERE `email` = \'' . pSQL($email) . '\''
-                );
-            } else {
-                // Si no existía, lo insertamos como nuevo visitante suscrito
-                $idLang = isset($this->context->language->id) ? (int) $this->context->language->id : (int) Configuration::get('PS_LANG_DEFAULT');
-                $idGroup = isset($this->context->shop->id_shop_group) ? (int) $this->context->shop->id_shop_group : 1;
-
-                $db->execute(
-                    'INSERT IGNORE INTO `' . _DB_PREFIX_ . 'emailsubscription` 
-                    (`id_shop`, `id_shop_group`, `email`, `newsletter_date_add`, `ip_registration_newsletter`, `http_referer`, `active`, `id_lang`) 
-                    VALUES (
-                        ' . (int) $idShop . ', 
-                        ' . $idGroup . ', 
-                        \'' . pSQL($email) . '\', 
-                        NOW(), 
-                        \'' . pSQL(Tools::getRemoteAddr()) . '\', 
-                        \'\', 
-                        1, 
-                        ' . $idLang . '
-                    )'
-                );
+            if (!empty($customers)) {
+                // 2. Si es cliente registrado, usamos el motor NATIVO
+                foreach ($customers as $custData) {
+                    $customer = new Customer((int)$custData['id_customer']);
+                    if ($customer->id) {
+                        $is_registered = true;
+                        if (!$customer->newsletter) {
+                            $customer->newsletter = 1;
+                            $customer->newsletter_date_add = date('Y-m-d H:i:s');
+                            $customer->ip_registration_newsletter = pSQL(Tools::getRemoteAddr());
+                            
+                            // MAGIA: Al usar update() actualiza, limpia la caché y no se cuelga
+                            $customer->update(); 
+                        }
+                    }
+                }
             }
-        } catch (Exception $e) {
-            PrestaShopLogger::addLog('SyspNewsletter Error de Sincronización: ' . $e->getMessage(), 3);
+
+            if (!$is_registered) {
+                // 3. Si es invitado, va por base de datos (no usan caché de objetos)
+                $table_exists = $db->executeS('SHOW TABLES LIKE "' . _DB_PREFIX_ . 'emailsubscription"');
+                if (!empty($table_exists)) {
+                    $existsInGuest = (int) $db->getValue('SELECT `id` FROM `' . _DB_PREFIX_ . 'emailsubscription` WHERE `email` = \'' . pSQL($email) . '\'');
+                    if ($existsInGuest) {
+                        $db->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 1, `newsletter_date_add` = NOW() WHERE `id` = ' . $existsInGuest);
+                    } else {
+                        $idLang = isset($this->context->language->id) ? (int) $this->context->language->id : (int) Configuration::get('PS_LANG_DEFAULT');
+                        $db->execute('INSERT IGNORE INTO `' . _DB_PREFIX_ . 'emailsubscription` (`id_shop`, `id_shop_group`, `email`, `newsletter_date_add`, `ip_registration_newsletter`, `http_referer`, `active`, `id_lang`) VALUES (' . (int) $idShop . ', 1, \'' . pSQL($email) . '\', NOW(), \'' . pSQL(Tools::getRemoteAddr()) . '\', \'\', 1, ' . $idLang . ')');
+                    }
+                }
+            }
+
+            // 4. Avisar a módulos de correo
+            Hook::exec('actionNewsletterRegistrationAfter', [
+                'email' => $email,
+                'action' => 'subscribe',
+                'error' => false
+            ]);
+
+        } catch (Throwable $e) {
+            PrestaShopLogger::addLog('SyspNewsletter Error: ' . $e->getMessage(), 3);
         }
     }
-
     /**
      * Recupera el código de descuento ya generado para este email (si existe).
      */
@@ -809,7 +799,7 @@ class SyspNewsletter extends Module
 
         // 4. Guardar pestaña y FORZAR PERMISOS
         if ($tab->add()) {
-
+            
             // --- INYECCIÓN AUTOMÁTICA DE PERMISOS PARA PRESTASHOP 8 ---
             $roles = [
                 'ROLE_MOD_TAB_ADMINSYSPNEWSLETTERSUBSCRIBERS_CREATE',
@@ -817,16 +807,16 @@ class SyspNewsletter extends Module
                 'ROLE_MOD_TAB_ADMINSYSPNEWSLETTERSUBSCRIBERS_UPDATE',
                 'ROLE_MOD_TAB_ADMINSYSPNEWSLETTERSUBSCRIBERS_DELETE'
             ];
-
+            
             $db = Db::getInstance();
-
+            
             foreach ($roles as $role) {
                 // Crear el rol si no existe
                 $db->execute('INSERT IGNORE INTO `' . _DB_PREFIX_ . 'authorization_role` (`slug`) VALUES ("' . pSQL($role) . '")');
-
+                
                 // Obtener el ID del rol recién creado
                 $id_role = (int) $db->getValue('SELECT `id_authorization_role` FROM `' . _DB_PREFIX_ . 'authorization_role` WHERE `slug` = "' . pSQL($role) . '"');
-
+                
                 // Asignárselo al SuperAdmin (id_profile = 1)
                 if ($id_role) {
                     $db->execute('INSERT IGNORE INTO `' . _DB_PREFIX_ . 'access` (`id_profile`, `id_authorization_role`) VALUES (1, ' . $id_role . ')');
@@ -874,5 +864,30 @@ class SyspNewsletter extends Module
         }
         $idShop = (int) $this->context->shop->id;
         $this->saveNewSubscriber($email, $idShop);
+    }
+
+    /**
+ * Se dispara cuando un cliente actualiza su perfil (incluyendo suscripción al newsletter)
+ */
+    /**
+     * Esto escucha cuando un cliente marca o desmarca la casilla desde su perfil de usuario
+     */
+    public function hookActionObjectCustomerUpdateAfter($params)
+    {
+        if (!isset($params['object']) || !($params['object'] instanceof Customer)) {
+            return;
+        }
+
+        $customer = $params['object'];
+        $email = strtolower(trim($customer->email));
+        $idShop = (int)$customer->id_shop;
+
+        if ($customer->newsletter) {
+            // Se suscribió desde "Mi Cuenta": Lo inyectamos en tu tabla para las estadísticas
+            Db::getInstance()->execute('INSERT IGNORE INTO `' . _DB_PREFIX_ . 'syspnl_subscribers` (`email`, `id_shop`, `date_add`) VALUES (\'' . pSQL($email) . '\', ' . (int) $idShop . ', NOW())');
+        } else {
+            // Se dio de baja desde "Mi Cuenta": Lo borramos de tu tabla
+            Db::getInstance()->execute('DELETE FROM `' . _DB_PREFIX_ . 'syspnl_subscribers` WHERE `email` = \'' . pSQL($email) . '\' AND `id_shop` = ' . (int)$idShop);
+        }
     }
 }

@@ -196,31 +196,49 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
         $id = (int) Tools::getValue($this->identifier);
 
         if ($id) {
-            // 1. Obtenemos el email ANTES de borrarlo de nuestra tabla
-            $email = Db::getInstance()->getValue(
-                'SELECT `email` FROM `' . _DB_PREFIX_ . bqSQL($this->table) . '` 
-                 WHERE `' . bqSQL($this->identifier) . '` = ' . $id
-            );
+            $db = Db::getInstance();
+            $email = $db->getValue('SELECT `email` FROM `' . _DB_PREFIX_ . bqSQL($this->table) . '` WHERE `' . bqSQL($this->identifier) . '` = ' . $id);
 
             if ($email) {
-                $email = strtolower(trim($email)); // ← AÑADIR ESTA LÍNEA
-                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'customer` SET `newsletter` = 0 WHERE LOWER(`email`) = \'' . pSQL($email) . '\'');
-                Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 0 WHERE LOWER(`email`) = \'' . pSQL($email) . '\'');
+                $email = strtolower(trim($email));
+
+                // 1. Clientes registrados: desuscribir limpiando caché
+                $customers = Customer::getCustomersByEmail($email);
+                if (!empty($customers)) {
+                    foreach ($customers as $custData) {
+                        $customer = new Customer((int)$custData['id_customer']);
+                        if ($customer->id && $customer->newsletter) {
+                            $customer->newsletter = 0;
+                            $customer->update(); // Esto sincroniza todo sin fallos
+                        }
+                    }
+                }
+
+                // 2. Invitados
+                $table_exists = $db->executeS('SHOW TABLES LIKE "' . _DB_PREFIX_ . 'emailsubscription"');
+                if (!empty($table_exists)) {
+                    $db->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 0 WHERE `email` = \'' . pSQL($email) . '\'');
+                }
+                
+                Hook::exec('actionNewsletterRegistrationAfter', [
+                    'email' => $email,
+                    'action' => 'unsubscribe',
+                    'error' => false
+                ]);
             }
-            // 3. Ahora sí, lo borramos de la tabla interna del módulo
+
+            // 3. Borrar de la tabla de visualización del módulo
             $sql = 'DELETE FROM `' . _DB_PREFIX_ . bqSQL($this->table) . '` WHERE `' . bqSQL($this->identifier) . '` = ' . $id;
 
-            if (Db::getInstance()->execute($sql)) {
+            if ($db->execute($sql)) {
                 $this->redirect_after = self::$currentIndex . '&conf=1&token=' . $this->token;
             } else {
                 $this->errors[] = $this->l('Error al intentar eliminar el suscriptor.');
             }
         }
-
         return false;
     }
 
-    // ── Sobrescribir el Borrado Masivo y Sincronizar ────────────────────────
     protected function processBulkDelete()
     {
         if (is_array($this->boxes) && !empty($this->boxes)) {
@@ -228,36 +246,30 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
             $id_list = implode(',', $ids);
             $db = Db::getInstance();
 
-            // 1. Obtenemos todos los emails de los IDs que el usuario ha marcado
-            $emails = $db->executeS(
-                'SELECT `email` FROM `' . _DB_PREFIX_ . bqSQL($this->table) . '` 
-                 WHERE `' . bqSQL($this->identifier) . '` IN (' . $id_list . ')'
-            );
+            $emails = $db->executeS('SELECT `email` FROM `' . _DB_PREFIX_ . bqSQL($this->table) . '` WHERE `' . bqSQL($this->identifier) . '` IN (' . $id_list . ')');
 
             if ($emails) {
+                $table_exists = $db->executeS('SHOW TABLES LIKE "' . _DB_PREFIX_ . 'emailsubscription"');
                 foreach ($emails as $row) {
                     $email = strtolower(trim($row['email']));
 
-                    // 2. Desuscribir Clientes Registrados usando ObjectModel (Limpia caché y dispara Hooks)
+                    // 1. Clientes
                     $customers = Customer::getCustomersByEmail($email);
                     if (!empty($customers)) {
                         foreach ($customers as $custData) {
-                            $customer = new Customer((int) $custData['id_customer']);
+                            $customer = new Customer((int)$custData['id_customer']);
                             if ($customer->id && $customer->newsletter) {
                                 $customer->newsletter = 0;
-                                $customer->update(); // Esto es lo que avisa a otros módulos
+                                $customer->update(); 
                             }
                         }
                     }
 
-                    // 3. Desuscribir en la tabla nativa de invitados (ps_emailsubscription)
-                    $db->execute(
-                        'UPDATE `' . _DB_PREFIX_ . 'emailsubscription` 
-                         SET `active` = 0 
-                         WHERE LOWER(`email`) = \'' . pSQL($email) . '\''
-                    );
-
-                    // 4. Lanzar Hook de desuscripción para herramientas de marketing externas
+                    // 2. Invitados
+                    if (!empty($table_exists)) {
+                        $db->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 0 WHERE `email` = \'' . pSQL($email) . '\'');
+                    }
+                    
                     Hook::exec('actionNewsletterRegistrationAfter', [
                         'email' => $email,
                         'action' => 'unsubscribe',
@@ -266,9 +278,8 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
                 }
             }
 
-            // 5. Finalmente, borrar los registros de la tabla interna de tu módulo
-            $sql = 'DELETE FROM `' . _DB_PREFIX_ . bqSQL($this->table) . '` 
-                    WHERE `' . bqSQL($this->identifier) . '` IN (' . $id_list . ')';
+            // 3. Tabla interna
+            $sql = 'DELETE FROM `' . _DB_PREFIX_ . bqSQL($this->table) . '` WHERE `' . bqSQL($this->identifier) . '` IN (' . $id_list . ')';
 
             if ($db->execute($sql)) {
                 $this->redirect_after = self::$currentIndex . '&conf=2&token=' . $this->token;
