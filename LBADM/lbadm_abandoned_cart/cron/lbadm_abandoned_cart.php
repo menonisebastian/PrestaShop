@@ -28,7 +28,7 @@
 
 // Bootstrap PrestaShop para CLI
 $_SERVER['REQUEST_METHOD'] = 'GET';
-$_SERVER['HTTP_HOST'] = 'losbuenosairesdemadrid.syspre.sysprovider.com'; // IMPORTANTE: MODIFICAR POR EL DOMINIO DE PRODUCCION
+$_SERVER['HTTP_HOST'] = 'losbuenosairesdemadrid.com'; // IMPORTANTE: MODIFICAR POR EL DOMINIO DE PRODUCCION
 $_SERVER['REQUEST_URI'] = '/';
 
 if (!defined('_PS_ADMIN_DIR_')) {

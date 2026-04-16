@@ -240,10 +240,10 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
                 $customers = Customer::getCustomersByEmail($email);
                 if (!empty($customers)) {
                     foreach ($customers as $custData) {
-                        $customer = new Customer((int) $custData['id_customer']);
+                        $customer = new Customer((int)$custData['id_customer']);
                         if ($customer->id && $customer->newsletter) {
                             $customer->newsletter = 0;
-                            $customer->update();
+                            $customer->update(); 
                         }
                     }
                 }
@@ -253,7 +253,7 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
                 if (!empty($table_exists)) {
                     $db->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 0 WHERE `email` = \'' . pSQL($email) . '\'');
                 }
-
+                
                 Hook::exec('actionNewsletterRegistrationAfter', [
                     'email' => $email,
                     'action' => 'unsubscribe',
@@ -291,10 +291,10 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
                     $customers = Customer::getCustomersByEmail($email);
                     if (!empty($customers)) {
                         foreach ($customers as $custData) {
-                            $customer = new Customer((int) $custData['id_customer']);
+                            $customer = new Customer((int)$custData['id_customer']);
                             if ($customer->id && $customer->newsletter) {
                                 $customer->newsletter = 0;
-                                $customer->update();
+                                $customer->update(); 
                             }
                         }
                     }
@@ -303,7 +303,7 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
                     if (!empty($table_exists)) {
                         $db->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 0 WHERE `email` = \'' . pSQL($email) . '\'');
                     }
-
+                    
                     Hook::exec('actionNewsletterRegistrationAfter', [
                         'email' => $email,
                         'action' => 'unsubscribe',

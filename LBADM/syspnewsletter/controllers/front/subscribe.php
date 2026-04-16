@@ -13,7 +13,7 @@ if (!defined('_PS_VERSION_')) {
 class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
 {
     public $ajax = true;
-    public $display_column_left = false;
+    public $display_column_left  = false;
     public $display_column_right = false;
 
     public function initContent()
@@ -41,16 +41,16 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
                 $this->jsonDie(['success' => false, 'error' => 'Módulo no disponible.']);
             }
 
-            $idShop = (int) $this->context->shop->id;
+            $idShop      = (int) $this->context->shop->id;
             $idShopGroup = (int) $this->context->shop->id_shop_group;
-            $idLang = (int) $this->context->language->id;
-            $db = Db::getInstance();
+            $idLang      = (int) $this->context->language->id;
+            $db          = Db::getInstance();
 
             // ── 1. Bypass Caché SQL: Forzamos lectura real de la BD usando 'false' en el 2do parámetro
             $id_customer = (int) $db->getValue(
                 'SELECT `id_customer` FROM `' . _DB_PREFIX_ . 'customer` 
                  WHERE `email` = \'' . pSQL($email) . '\' AND `id_shop` = ' . $idShop,
-                false
+                false 
             );
 
             if ($id_customer) {
@@ -58,16 +58,16 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
                 $is_sub = (int) $db->getValue(
                     'SELECT `newsletter` FROM `' . _DB_PREFIX_ . 'customer` 
                      WHERE `id_customer` = ' . $id_customer,
-                    false
+                    false 
                 );
-
+                
                 if ($is_sub === 1) {
                     ob_end_clean();
                     $this->jsonDie(['success' => false, 'error' => 'Este email ya está suscrito al boletín.']);
                 }
 
                 $this->subscribeRegisteredCustomer($id_customer);
-
+                
             } else {
                 // RUTA B: ES UN VISITANTE / INVITADO
                 $table_exists = $db->executeS('SHOW TABLES LIKE "' . _DB_PREFIX_ . 'emailsubscription"');
@@ -78,11 +78,11 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
 
                 $guest = $db->getRow(
                     'SELECT `id`, `active` FROM `' . _DB_PREFIX_ . 'emailsubscription` 
-                     WHERE `email` = \'' . pSQL($email) . '\' AND `id_shop` = ' . $idShop,
-                    false
+                     WHERE `email` = \'' . pSQL($email) . '\' AND `id_shop` = ' . $idShop, 
+                     false
                 );
 
-                if ($guest && (int) $guest['active'] === 1) {
+                if ($guest && (int)$guest['active'] === 1) {
                     ob_end_clean();
                     $this->jsonDie(['success' => false, 'error' => 'Este email ya está suscrito al boletín.']);
                 }
@@ -95,15 +95,15 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
 
             // ── 3. Disparar hooks nativos de PS (Mailchimp/Brevo) ────────────
             Hook::exec('actionNewsletterRegistrationAfter', [
-                'email' => $email,
+                'email'  => $email,
                 'action' => 'subscribe',
-                'error' => false,
+                'error'  => false,
             ]);
 
             // ── 4. Preparar respuesta y Cupones ──────────────────────────────
             $response = [
                 'success' => true,
-                'msg' => Configuration::get('SYSPNL_SUCCESS_MSG') ?: '¡Gracias por suscribirte!',
+                'msg'     => Configuration::get('SYSPNL_SUCCESS_MSG') ?: '¡Gracias por suscribirte!',
             ];
 
             if ((int) Configuration::get('SYSPNL_DISCOUNT_ACTIVE') === 1) {
@@ -113,7 +113,7 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
                 }
                 if ($code) {
                     $response['discount_code'] = $code;
-                    $response['discount_msg'] = Configuration::get('SYSPNL_DISCOUNT_MSG') ?: '¡Usa este código en tu próxima compra!';
+                    $response['discount_msg']  = Configuration::get('SYSPNL_DISCOUNT_MSG') ?: '¡Usa este código en tu próxima compra!';
                 }
             }
 
@@ -139,7 +139,7 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
             $customer->newsletter = 1;
             $customer->newsletter_date_add = date('Y-m-d H:i:s');
             $customer->ip_registration_newsletter = pSQL((string) Tools::getRemoteAddr());
-
+            
             if ($customer->update()) {
                 // 2. LA MAGIA: Si el usuario está conectado ahora mismo, REFRESCAMOS SU SESIÓN.
                 // Esto fuerza a que su vista de "Mi Perfil" actualice la casilla instantáneamente.
@@ -151,7 +151,7 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
         }
     }
 
-    private function subscribeGuestEmail(string $email, $guestRow, int $idShop, int $idShopGroup, int $idLang, Db $db): void
+    private function subscribeGuestEmail(string $email, $guestRow, int $idShop, int $idShopGroup, int $idLang, Db $db): void 
     {
         if ($guestRow) {
             $db->execute(
