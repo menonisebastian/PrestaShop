@@ -2,8 +2,6 @@
 /**
  * SYSPROVIDER Newsletter Popup — Admin Subscribers Controller
  *
- * Ruta correcta: /modules/syspnewsletter/controllers/admin/AdminSyspNewsletterSubscribersController.php
- *
  * @author    SYSPROVIDER S.L.
  * @copyright 2024 SYSPROVIDER S.L.
  */
@@ -19,14 +17,17 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
         $this->bootstrap = true;
         $this->table = 'syspnl_subscribers';
         $this->identifier = 'id_subscriber';
-        $this->className = 'Configuration'; // clase dummy — usamos queries directas
+        $this->className = 'Configuration'; // clase dummy
         $this->lang = false;
 
         $this->module = Module::getInstanceByName('syspnewsletter');
 
+        // Sincronizamos la base de datos local con la nativa de PrestaShop antes de cargar nada
+        $this->syncSubscribers();
+
         parent::__construct();
 
-        $this->meta_title = $this->l('Suscriptores Newsletter');
+        $this->meta_title = $this->l('Todos los Suscriptores (Sincronizado)');
 
         // ── Columnas ──────────────────────────────────────────────────────
         $this->fields_list = [
@@ -61,11 +62,48 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
         $this->actions = ['delete'];
         $this->bulk_actions = [
             'delete' => [
-                'text' => $this->l('Eliminar seleccionados'),
-                'confirm' => $this->l('¿Eliminar los suscriptores seleccionados?'),
+                'text' => $this->l('Darlos de baja'),
+                'confirm' => $this->l('¿Dar de baja del boletín a los seleccionados?'),
                 'icon' => 'icon-trash',
             ],
         ];
+    }
+
+    /**
+     * MAGIA PURA: Esta función asegura que tu tabla interna del popup sea un espejo exacto 
+     * de los clientes suscritos (clientes reales + invitados).
+     */
+    private function syncSubscribers()
+    {
+        $db = Db::getInstance();
+        $pfx = _DB_PREFIX_;
+
+        // 1. Añadir clientes registrados que activaron el newsletter manualmente
+        $db->execute("
+            INSERT IGNORE INTO `{$pfx}syspnl_subscribers` (email, id_shop, date_add)
+            SELECT email, id_shop, newsletter_date_add 
+            FROM `{$pfx}customer` 
+            WHERE newsletter = 1
+        ");
+
+        // 2. Añadir invitados del módulo nativo
+        $table_exists = $db->executeS("SHOW TABLES LIKE '{$pfx}emailsubscription'");
+        if (!empty($table_exists)) {
+            $db->execute("
+                INSERT IGNORE INTO `{$pfx}syspnl_subscribers` (email, id_shop, date_add)
+                SELECT email, id_shop, newsletter_date_add 
+                FROM `{$pfx}emailsubscription` 
+                WHERE active = 1
+            ");
+        }
+
+        // 3. Limpiar a los que se hayan dado de baja de forma nativa (desde su perfil)
+        $db->execute("
+            DELETE s FROM `{$pfx}syspnl_subscribers` s
+            LEFT JOIN `{$pfx}customer` c ON s.email = c.email AND s.id_shop = c.id_shop AND c.newsletter = 1
+            LEFT JOIN `{$pfx}emailsubscription` e ON s.email = e.email AND s.id_shop = e.id_shop AND e.active = 1
+            WHERE c.id_customer IS NULL AND e.id IS NULL
+        ");
     }
 
     // ── Sobrescribir SELECT para usar nuestra tabla ────────────────────────
@@ -82,7 +120,6 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
 
     public function initContent()
     {
-        // CSS propio
         $this->context->controller->addCSS(
             _MODULE_DIR_ . 'syspnewsletter/views/css/admin_subscribers.css'
         );
@@ -157,7 +194,7 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
         header('Cache-Control: no-store, no-cache, must-revalidate');
 
         $out = fopen('php://output', 'w');
-        fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); // BOM para Excel
+        fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
         fputcsv($out, ['Email', 'Cupón', 'Tienda', 'Fecha suscripción'], ';');
 
         foreach ((array) $rows as $r) {
@@ -173,8 +210,6 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
         exit;
     }
 
-    // ── Botón exportar en toolbar ──────────────────────────────────────────
-
     public function initToolbar()
     {
         parent::initToolbar();
@@ -186,11 +221,10 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
             'class' => 'btn btn-default',
         ];
 
-        // Quitar botón "Añadir nuevo" (no aplica)
         unset($this->toolbar_btn['new']);
     }
 
-    // ── Sobrescribir el Borrado Individual y Sincronizar ────────────────────
+    // ── Borrado Individual y Sincronizar (Darse de baja real) ────────────────
     public function processDelete()
     {
         $id = (int) Tools::getValue($this->identifier);
@@ -202,14 +236,14 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
             if ($email) {
                 $email = strtolower(trim($email));
 
-                // 1. Clientes registrados: desuscribir limpiando caché
+                // 1. Clientes registrados: desuscribir mediante Objeto (limpia caché)
                 $customers = Customer::getCustomersByEmail($email);
                 if (!empty($customers)) {
                     foreach ($customers as $custData) {
-                        $customer = new Customer((int)$custData['id_customer']);
+                        $customer = new Customer((int) $custData['id_customer']);
                         if ($customer->id && $customer->newsletter) {
                             $customer->newsletter = 0;
-                            $customer->update(); // Esto sincroniza todo sin fallos
+                            $customer->update();
                         }
                     }
                 }
@@ -219,7 +253,7 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
                 if (!empty($table_exists)) {
                     $db->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 0 WHERE `email` = \'' . pSQL($email) . '\'');
                 }
-                
+
                 Hook::exec('actionNewsletterRegistrationAfter', [
                     'email' => $email,
                     'action' => 'unsubscribe',
@@ -227,7 +261,7 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
                 ]);
             }
 
-            // 3. Borrar de la tabla de visualización del módulo
+            // 3. Borrar visualmente de la tabla
             $sql = 'DELETE FROM `' . _DB_PREFIX_ . bqSQL($this->table) . '` WHERE `' . bqSQL($this->identifier) . '` = ' . $id;
 
             if ($db->execute($sql)) {
@@ -257,10 +291,10 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
                     $customers = Customer::getCustomersByEmail($email);
                     if (!empty($customers)) {
                         foreach ($customers as $custData) {
-                            $customer = new Customer((int)$custData['id_customer']);
+                            $customer = new Customer((int) $custData['id_customer']);
                             if ($customer->id && $customer->newsletter) {
                                 $customer->newsletter = 0;
-                                $customer->update(); 
+                                $customer->update();
                             }
                         }
                     }
@@ -269,7 +303,7 @@ class AdminSyspNewsletterSubscribersController extends ModuleAdminController
                     if (!empty($table_exists)) {
                         $db->execute('UPDATE `' . _DB_PREFIX_ . 'emailsubscription` SET `active` = 0 WHERE `email` = \'' . pSQL($email) . '\'');
                     }
-                    
+
                     Hook::exec('actionNewsletterRegistrationAfter', [
                         'email' => $email,
                         'action' => 'unsubscribe',

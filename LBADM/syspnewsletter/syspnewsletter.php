@@ -548,16 +548,16 @@ class SyspNewsletter extends Module
             if (!empty($customers)) {
                 // 2. Si es cliente registrado, usamos el motor NATIVO
                 foreach ($customers as $custData) {
-                    $customer = new Customer((int)$custData['id_customer']);
+                    $customer = new Customer((int) $custData['id_customer']);
                     if ($customer->id) {
                         $is_registered = true;
                         if (!$customer->newsletter) {
                             $customer->newsletter = 1;
                             $customer->newsletter_date_add = date('Y-m-d H:i:s');
                             $customer->ip_registration_newsletter = pSQL(Tools::getRemoteAddr());
-                            
+
                             // MAGIA: Al usar update() actualiza, limpia la caché y no se cuelga
-                            $customer->update(); 
+                            $customer->update();
                         }
                     }
                 }
@@ -799,7 +799,7 @@ class SyspNewsletter extends Module
 
         // 4. Guardar pestaña y FORZAR PERMISOS
         if ($tab->add()) {
-            
+
             // --- INYECCIÓN AUTOMÁTICA DE PERMISOS PARA PRESTASHOP 8 ---
             $roles = [
                 'ROLE_MOD_TAB_ADMINSYSPNEWSLETTERSUBSCRIBERS_CREATE',
@@ -807,16 +807,16 @@ class SyspNewsletter extends Module
                 'ROLE_MOD_TAB_ADMINSYSPNEWSLETTERSUBSCRIBERS_UPDATE',
                 'ROLE_MOD_TAB_ADMINSYSPNEWSLETTERSUBSCRIBERS_DELETE'
             ];
-            
+
             $db = Db::getInstance();
-            
+
             foreach ($roles as $role) {
                 // Crear el rol si no existe
                 $db->execute('INSERT IGNORE INTO `' . _DB_PREFIX_ . 'authorization_role` (`slug`) VALUES ("' . pSQL($role) . '")');
-                
+
                 // Obtener el ID del rol recién creado
                 $id_role = (int) $db->getValue('SELECT `id_authorization_role` FROM `' . _DB_PREFIX_ . 'authorization_role` WHERE `slug` = "' . pSQL($role) . '"');
-                
+
                 // Asignárselo al SuperAdmin (id_profile = 1)
                 if ($id_role) {
                     $db->execute('INSERT IGNORE INTO `' . _DB_PREFIX_ . 'access` (`id_profile`, `id_authorization_role`) VALUES (1, ' . $id_role . ')');
@@ -867,8 +867,8 @@ class SyspNewsletter extends Module
     }
 
     /**
- * Se dispara cuando un cliente actualiza su perfil (incluyendo suscripción al newsletter)
- */
+     * Se dispara cuando un cliente actualiza su perfil (incluyendo suscripción al newsletter)
+     */
     /**
      * Esto escucha cuando un cliente marca o desmarca la casilla desde su perfil de usuario
      */
@@ -880,14 +880,14 @@ class SyspNewsletter extends Module
 
         $customer = $params['object'];
         $email = strtolower(trim($customer->email));
-        $idShop = (int)$customer->id_shop;
+        $idShop = (int) $customer->id_shop;
 
         if ($customer->newsletter) {
             // Se suscribió desde "Mi Cuenta": Lo inyectamos en tu tabla para las estadísticas
             Db::getInstance()->execute('INSERT IGNORE INTO `' . _DB_PREFIX_ . 'syspnl_subscribers` (`email`, `id_shop`, `date_add`) VALUES (\'' . pSQL($email) . '\', ' . (int) $idShop . ', NOW())');
         } else {
             // Se dio de baja desde "Mi Cuenta": Lo borramos de tu tabla
-            Db::getInstance()->execute('DELETE FROM `' . _DB_PREFIX_ . 'syspnl_subscribers` WHERE `email` = \'' . pSQL($email) . '\' AND `id_shop` = ' . (int)$idShop);
+            Db::getInstance()->execute('DELETE FROM `' . _DB_PREFIX_ . 'syspnl_subscribers` WHERE `email` = \'' . pSQL($email) . '\' AND `id_shop` = ' . (int) $idShop);
         }
     }
 }

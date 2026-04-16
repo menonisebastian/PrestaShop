@@ -13,7 +13,7 @@ if (!defined('_PS_VERSION_')) {
 class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
 {
     public $ajax = true;
-    public $display_column_left  = false;
+    public $display_column_left = false;
     public $display_column_right = false;
 
     public function initContent()
@@ -41,28 +41,33 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
                 $this->jsonDie(['success' => false, 'error' => 'Módulo no disponible.']);
             }
 
-            $idShop      = (int) $this->context->shop->id;
+            $idShop = (int) $this->context->shop->id;
             $idShopGroup = (int) $this->context->shop->id_shop_group;
-            $idLang      = (int) $this->context->language->id;
-            $db          = Db::getInstance();
+            $idLang = (int) $this->context->language->id;
+            $db = Db::getInstance();
 
-            // ── 1. ¿A qué tabla pertenece este email? ────────────────────────
+            // ── 1. Bypass Caché SQL: Forzamos lectura real de la BD usando 'false' en el 2do parámetro
             $id_customer = (int) $db->getValue(
                 'SELECT `id_customer` FROM `' . _DB_PREFIX_ . 'customer` 
-                 WHERE `email` = \'' . pSQL($email) . '\' AND `id_shop` = ' . $idShop
+                 WHERE `email` = \'' . pSQL($email) . '\' AND `id_shop` = ' . $idShop,
+                false
             );
 
             if ($id_customer) {
                 // RUTA A: ES UN CLIENTE REGISTRADO
-                $is_sub = (int) $db->getValue('SELECT `newsletter` FROM `' . _DB_PREFIX_ . 'customer` WHERE `id_customer` = ' . $id_customer);
-                
+                $is_sub = (int) $db->getValue(
+                    'SELECT `newsletter` FROM `' . _DB_PREFIX_ . 'customer` 
+                     WHERE `id_customer` = ' . $id_customer,
+                    false
+                );
+
                 if ($is_sub === 1) {
                     ob_end_clean();
                     $this->jsonDie(['success' => false, 'error' => 'Este email ya está suscrito al boletín.']);
                 }
 
-                $this->subscribeRegisteredCustomer($id_customer, $db);
-                
+                $this->subscribeRegisteredCustomer($id_customer);
+
             } else {
                 // RUTA B: ES UN VISITANTE / INVITADO
                 $table_exists = $db->executeS('SHOW TABLES LIKE "' . _DB_PREFIX_ . 'emailsubscription"');
@@ -71,9 +76,13 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
                     $this->jsonDie(['success' => false, 'error' => 'El módulo nativo de newsletter no está instalado.']);
                 }
 
-                $guest = $db->getRow('SELECT `id`, `active` FROM `' . _DB_PREFIX_ . 'emailsubscription` WHERE `email` = \'' . pSQL($email) . '\' AND `id_shop` = ' . $idShop);
+                $guest = $db->getRow(
+                    'SELECT `id`, `active` FROM `' . _DB_PREFIX_ . 'emailsubscription` 
+                     WHERE `email` = \'' . pSQL($email) . '\' AND `id_shop` = ' . $idShop,
+                    false
+                );
 
-                if ($guest && (int)$guest['active'] === 1) {
+                if ($guest && (int) $guest['active'] === 1) {
                     ob_end_clean();
                     $this->jsonDie(['success' => false, 'error' => 'Este email ya está suscrito al boletín.']);
                 }
@@ -81,20 +90,20 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
                 $this->subscribeGuestEmail($email, $guest, $idShop, $idShopGroup, $idLang, $db);
             }
 
-            // ── 2. Guardar en tabla interna (Solo para estadísticas y panel) ──
+            // ── 2. Guardar en tabla interna (Solo para cupones y listado base) ──
             $this->saveInModuleTable($email, $idShop, $db);
 
             // ── 3. Disparar hooks nativos de PS (Mailchimp/Brevo) ────────────
             Hook::exec('actionNewsletterRegistrationAfter', [
-                'email'  => $email,
+                'email' => $email,
                 'action' => 'subscribe',
-                'error'  => false,
+                'error' => false,
             ]);
 
             // ── 4. Preparar respuesta y Cupones ──────────────────────────────
             $response = [
                 'success' => true,
-                'msg'     => Configuration::get('SYSPNL_SUCCESS_MSG') ?: '¡Gracias por suscribirte!',
+                'msg' => Configuration::get('SYSPNL_SUCCESS_MSG') ?: '¡Gracias por suscribirte!',
             ];
 
             if ((int) Configuration::get('SYSPNL_DISCOUNT_ACTIVE') === 1) {
@@ -104,7 +113,7 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
                 }
                 if ($code) {
                     $response['discount_code'] = $code;
-                    $response['discount_msg']  = Configuration::get('SYSPNL_DISCOUNT_MSG') ?: '¡Usa este código en tu próxima compra!';
+                    $response['discount_msg'] = Configuration::get('SYSPNL_DISCOUNT_MSG') ?: '¡Usa este código en tu próxima compra!';
                 }
             }
 
@@ -122,23 +131,27 @@ class SyspNewsletterSubscribeModuleFrontController extends ModuleFrontController
     // MÉTODOS PRIVADOS
     // ─────────────────────────────────────────────────────────────────────────
 
-    private function subscribeRegisteredCustomer(int $id_customer, Db $db): void
+    private function subscribeRegisteredCustomer(int $id_customer): void
     {
-        $db->execute(
-            'UPDATE `' . _DB_PREFIX_ . 'customer`
-             SET `newsletter` = 1,
-                 `newsletter_date_add` = NOW(),
-                 `ip_registration_newsletter` = \'' . pSQL((string) Tools::getRemoteAddr()) . '\'
-             WHERE `id_customer` = ' . $id_customer
-        );
-        
-        // Engañar a la caché de PS para que otros módulos lo vean como activo instantáneamente
-        $customerObj = new Customer($id_customer);
-        $customerObj->newsletter = 1;
-        Hook::exec('actionObjectCustomerUpdateAfter', ['object' => $customerObj]);
+        // 1. Usamos el Objeto Nivel Core para actualizar la Base de Datos
+        $customer = new Customer($id_customer);
+        if (Validate::isLoadedObject($customer)) {
+            $customer->newsletter = 1;
+            $customer->newsletter_date_add = date('Y-m-d H:i:s');
+            $customer->ip_registration_newsletter = pSQL((string) Tools::getRemoteAddr());
+
+            if ($customer->update()) {
+                // 2. LA MAGIA: Si el usuario está conectado ahora mismo, REFRESCAMOS SU SESIÓN.
+                // Esto fuerza a que su vista de "Mi Perfil" actualice la casilla instantáneamente.
+                if (isset($this->context->customer) && $this->context->customer->id == $id_customer) {
+                    $this->context->customer = $customer;
+                    $this->context->updateCustomer($customer);
+                }
+            }
+        }
     }
 
-    private function subscribeGuestEmail(string $email, $guestRow, int $idShop, int $idShopGroup, int $idLang, Db $db): void 
+    private function subscribeGuestEmail(string $email, $guestRow, int $idShop, int $idShopGroup, int $idLang, Db $db): void
     {
         if ($guestRow) {
             $db->execute(
